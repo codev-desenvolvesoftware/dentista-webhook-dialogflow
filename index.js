@@ -85,36 +85,36 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult, null, 2));
     console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentText, null, 2));
     console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentMessages, null, 2));
-    
+
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
     console.log("🤖 Resposta do Dialogflow:", reply);
 
+    // Validação antes de enviar à Z-API
+    if (!req.body.phone || typeof req.body.phone !== 'string') {
+      console.error("❌ Telefone inválido:", req.body.phone);
+      return res.status(400).send("Telefone inválido");
+    }
+
+    if (!reply || typeof reply !== 'string' || !reply.trim()) {
+      console.error("❌ Resposta vazia ou inválida do Dialogflow:", reply);
+      return res.status(400).send("Resposta inválida do Dialogflow");
+    }
+
+    console.log("📤 Enviando resposta para Z-API:", {
+      phone: req.body.phone,
+      message: reply
+    });
+
     await axios.post(
-      `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE_ID}/token/${process.env.ZAPI_TOKEN}/send-messages`,
+      `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`,
       {
-        phone: from,
-        message: reply,
+        phone: req.body.phone,
+        message: reply
       }
     );
 
     res.status(200).send("OK");
-  } catch (err) {
-    console.error("❌ Erro ao chamar o Dialogflow:");
 
-    if (err.response) {
-      console.error("📄 Status:", err.response.status);
-      console.error("📄 Headers:", err.response.headers);
-      console.error("📄 Data:", err.response.data);
-    } else if (err.request) {
-      console.error("📡 Nenhuma resposta recebida:", err.request);
-    } else {
-      console.error("💥 Erro na configuração da requisição:", err.message);
-    }
-
-    res.status(500).send("Erro ao processar");
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
