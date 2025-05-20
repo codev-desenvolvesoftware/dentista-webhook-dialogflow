@@ -44,7 +44,7 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
-    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}/detectIntent`;
+    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
     console.log("📝 Mensagem:", message);
