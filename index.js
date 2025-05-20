@@ -6,33 +6,45 @@ require('dotenv').config();
 
 const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
 const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const DF_PROJECT_ID = process.env.DF_PROJECT_ID;
+const GOOGLE_APPLICATION_CREDENTIALS_BASE64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 
-console.log("🧪 Variáveis de ambiente carregadas:", process.env);
-console.log("🔑 ZAPI_INSTANCE_ID:", ZAPI_INSTANCE_ID);
-console.log("🔑 ZAPI_TOKEN:", ZAPI_TOKEN);
-console.log("🔑 DF_PROJECT_ID:", process.env.DF_PROJECT_ID);
+console.log("🧪 Variáveis de ambiente carregadas:", {
+  ZAPI_INSTANCE_ID,
+  ZAPI_TOKEN: ZAPI_TOKEN ? '*****' : null,
+  DF_PROJECT_ID,
+  GOOGLE_APPLICATION_CREDENTIALS_BASE64: GOOGLE_APPLICATION_CREDENTIALS_BASE64 ? 'definida' : 'NÃO DEFINIDA'
+});
+
+if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+  console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas! Verifique .env");
+  process.exit(1);
+}
 
 const app = express();
 app.use(bodyParser.json());
 
 let accessToken = null;
 let tokenExpiry = 0;
+let authClient = null;
 
 async function getAccessToken() {
-  const auth = new GoogleAuth({
-    keyFile: './credentials.json',
-    scopes: ['https://www.googleapis.com/auth/dialogflow']
-  });
+  if (!authClient) {
+    const credentialsJson = Buffer.from(GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+    const auth = new GoogleAuth({
+      credentials: JSON.parse(credentialsJson),
+      scopes: ['https://www.googleapis.com/auth/dialogflow']
+    });
+    authClient = await auth.getClient();
+  }
 
-  const client = await auth.getClient();
-  const tokenResponse = await client.getAccessToken();
+  const tokenResponse = await authClient.getAccessToken();
   accessToken = tokenResponse.token;
-  tokenExpiry = Date.now() + 50 * 60 * 1000;
+  tokenExpiry = Date.now() + 50 * 60 * 1000; // 50 minutos
 }
 
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
-  console.log("📥 Webhook recebido:", JSON.stringify(req.body, null, 2));
 
   const from = req.body.phone;
   const message = req.body.text?.message || '';
@@ -48,6 +60,8 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
+    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
+
     const body = {
       queryInput: {
         text: {
@@ -57,56 +71,45 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     };
 
-    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
-
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
     console.log("📝 Conteúdo da mensagem:", message);
-    console.log("📦 Corpo enviado para Dialogflow:", JSON.stringify(body, null, 2));
-    console.log("🔑 Usando token de acesso:", accessToken);
 
-    const dialogflowResponse = await axios.post(
-      dialogflowUrl,
-      body,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const dialogflowResponse = await axios.post(dialogflowUrl, body, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-    const reply = dialogflowResponse.data.queryResult.fulfillmentText;
-    console.log("🤖 Resposta do Dialogflow:", reply);
+    const reply = dialogflowResponse.data.queryResult?.fulfillmentText?.trim();
 
-    // Validações
-    if (!req.body.phone || typeof req.body.phone !== 'string') {
-      console.error("❌ Telefone inválido:", req.body.phone);
-      return res.status(400).send("Telefone inválido");
-    }
-
-    if (!reply || typeof reply !== 'string' || !reply.trim()) {
-      console.error("❌ Resposta vazia ou inválida do Dialogflow:", reply);
+    if (!reply) {
+      console.error("❌ Resposta vazia ou inválida do Dialogflow");
       return res.status(400).send("Resposta inválida do Dialogflow");
     }
 
+    const cleanPhone = String(from).replace(/\D/g, '');
+    if (!cleanPhone.match(/^55\d{10,11}$/)) {
+      console.error("❌ Telefone inválido ou formato incorreto:", cleanPhone);
+      return res.status(400).send("Telefone inválido");
+    }
+
+    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+
     console.log("📤 Enviando resposta para Z-API:", {
-      phone: req.body.phone,
+      phone: cleanPhone,
       message: reply
     });
 
-    await axios.post(
-      `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`,
-      {
-        phone: req.body.phone,
-        message: reply
-      }
-    );
+    await axios.post(zapiUrl, {
+      phone: cleanPhone,
+      message: reply
+    });
 
     res.status(200).send("OK");
 
   } catch (err) {
     console.error("❌ Erro ao chamar o Dialogflow ou enviar mensagem:");
-
     if (err.response) {
       console.error("📄 Status:", err.response.status);
       console.error("📄 Headers:", err.response.headers);
@@ -116,11 +119,9 @@ app.post('/zapi-webhook', async (req, res) => {
     } else {
       console.error("💥 Erro na configuração da requisição:", err.message);
     }
-
     res.status(500).send("Erro ao processar");
   }
 });
 
-// 🔊 Agora o listen está no lugar certo!
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
