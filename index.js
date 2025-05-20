@@ -27,6 +27,15 @@ async function getAccessToken() {
   tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
 
+const body = {
+  queryInput: {
+    text: {
+      text: message,
+      languageCode: 'pt-BR'
+    }
+  }
+};
+
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
   console.log("📥 Webhook recebido:", JSON.stringify(req.body, null, 2));
@@ -57,17 +66,12 @@ app.post('/zapi-webhook', async (req, res) => {
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
     console.log("📝 Conteúdo da mensagem:", message);
+    
 
+    console.log("🔑 Acessando o token:", accessToken);
     const dialogflowResponse = await axios.post(
       dialogflowUrl,
-      {
-        queryInput: {
-          text: {
-            text: message,
-            languageCode: "pt-BR",
-          },
-        },
-      },
+      body,      
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
