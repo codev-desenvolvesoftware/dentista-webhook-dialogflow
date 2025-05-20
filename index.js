@@ -24,17 +24,8 @@ async function getAccessToken() {
   const client = await auth.getClient();
   const tokenResponse = await client.getAccessToken();
   accessToken = tokenResponse.token;
-  tokenExpiry = Date.now() + 50 * 60 * 1000;
+  tokenExpiry = Date.now() + 50 * 60 * 1000; // expira em 50 minutos
 }
-
-const body = {
-  queryInput: {
-    text: {
-      text: message,
-      languageCode: 'pt-BR'
-    }
-  }
-};
 
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
@@ -54,31 +45,28 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
-    if (!message) {
-      throw new Error("Mensagem inválida: 'message' está vazia ou null");
-    }
-
-    if (!sessionId) {
-      throw new Error("SessionId inválido");
-    }
-
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
+
+    // Monta o corpo da requisição para Dialogflow aqui, com a variável message definida
+    const body = {
+      queryInput: {
+        text: {
+          text: message,
+          languageCode: 'pt-BR'
+        }
+      }
+    };
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
     console.log("📝 Conteúdo da mensagem:", message);
-    
+    console.log("🔑 Usando token de acesso:", accessToken);
 
-    console.log("🔑 Acessando o token:", accessToken);
-    const dialogflowResponse = await axios.post(
-      dialogflowUrl,
-      body,      
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const dialogflowResponse = await axios.post(dialogflowUrl, body, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
     console.log("🤖 Resposta do Dialogflow:", reply);
