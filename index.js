@@ -5,18 +5,20 @@ const axios = require('axios');
 require('dotenv').config();
 
 const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
-const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const ZAPI_INSTANCE_TOKEN = process.env.ZAPI_INSTANCE_TOKEN;
+const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 const DF_PROJECT_ID = process.env.DF_PROJECT_ID;
 const GOOGLE_APPLICATION_CREDENTIALS_BASE64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 
 console.log("🧪 Variáveis de ambiente carregadas:", {
   ZAPI_INSTANCE_ID,
-  ZAPI_TOKEN: ZAPI_TOKEN ? '*****' : null,
+  ZAPI_INSTANCE_TOKEN: ZAPI_INSTANCE_TOKEN ? '*****' : null,
+  ZAPI_CLIENT_TOKEN: ZAPI_CLIENT_TOKEN ? '*****' : null,
   DF_PROJECT_ID,
   GOOGLE_APPLICATION_CREDENTIALS_BASE64: GOOGLE_APPLICATION_CREDENTIALS_BASE64 ? 'definida' : 'NÃO DEFINIDA'
 });
 
-if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
+if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
   console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas! Verifique .env");
   process.exit(1);
 }
@@ -94,23 +96,22 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(400).send("Telefone inválido");
     }
 
-    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
 
-    const zapiPayload = {
+    console.log("📤 Enviando resposta para Z-API:", {
       phone: cleanPhone,
       message: reply
-    };
-
-    
-    console.log("📦 Payload final para Z-API:", JSON.stringify(zapiPayload, null, 2));
-
-    const zapiResponse = await axios.post(zapiUrl, zapiPayload, {
-      headers: {
-        "Content-Type": "application/json"
-      }
     });
 
-    console.log("✅ Resposta da Z-API:", zapiResponse.data);
+    await axios.post(zapiUrl, {
+      phone: cleanPhone,
+      message: reply
+    }, {
+      headers: {
+        'Client-Token': ZAPI_CLIENT_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
 
     res.status(200).send("OK");
 
