@@ -4,13 +4,10 @@ const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 require('dotenv').config();
 
-// 🔐 Variáveis de ambiente
-const {
-  ZAPI_INSTANCE_ID,
-  ZAPI_TOKEN,
-  DF_PROJECT_ID,
-  GOOGLE_APPLICATION_CREDENTIALS_BASE64
-} = process.env;
+const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
+const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+const DF_PROJECT_ID = process.env.DF_PROJECT_ID;
+const GOOGLE_APPLICATION_CREDENTIALS_BASE64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
 
 console.log("🧪 Variáveis de ambiente carregadas:", {
   ZAPI_INSTANCE_ID,
@@ -19,9 +16,8 @@ console.log("🧪 Variáveis de ambiente carregadas:", {
   GOOGLE_APPLICATION_CREDENTIALS_BASE64: GOOGLE_APPLICATION_CREDENTIALS_BASE64 ? 'definida' : 'NÃO DEFINIDA'
 });
 
-// 🚫 Verificação de variáveis obrigatórias
 if (!ZAPI_INSTANCE_ID || !ZAPI_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-  console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas! Verifique o arquivo .env");
+  console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas! Verifique .env");
   process.exit(1);
 }
 
@@ -32,7 +28,6 @@ let accessToken = null;
 let tokenExpiry = 0;
 let authClient = null;
 
-// 🔑 Geração e cache do token de acesso
 async function getAccessToken() {
   if (!authClient) {
     const credentialsJson = Buffer.from(GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf-8');
@@ -45,18 +40,18 @@ async function getAccessToken() {
 
   const tokenResponse = await authClient.getAccessToken();
   accessToken = tokenResponse.token;
-  tokenExpiry = Date.now() + 50 * 60 * 1000;
+  tokenExpiry = Date.now() + 50 * 60 * 1000; // 50 minutos
 }
 
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
 
   const from = req.body.phone;
-  const message = req.body.text?.message?.trim() || '';
+  const message = req.body.text?.message || '';
   const sessionId = `session-${from}`;
 
   if (!from || !message) {
-    console.error('❌ Dados inválidos: número ou mensagem ausentes');
+    console.error('❌ Dados inválidos: from ou message ausentes');
     return res.status(400).send('Dados inválidos');
   }
 
@@ -99,22 +94,24 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(400).send("Telefone inválido");
     }
 
+    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
+
     const zapiPayload = {
       phone: cleanPhone,
-      message: reply
+      message: reply,
+      delayMessage: 0 // pode alterar para 15 se quiser simular digitação
     };
 
     console.log("📦 Payload final para Z-API:", JSON.stringify(zapiPayload, null, 2));
 
-    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_TOKEN}/send-text`;
-
     const zapiResponse = await axios.post(zapiUrl, zapiPayload, {
       headers: {
-        'Content-Type': 'application/json'
+        "Content-Type": "application/json"
       }
     });
 
-    console.log("✅ Mensagem enviada com sucesso:", zapiResponse.data);
+    console.log("✅ Resposta da Z-API:", zapiResponse.data);
+
     res.status(200).send("OK");
 
   } catch (err) {
