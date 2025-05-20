@@ -23,6 +23,8 @@ async function getAccessToken() {
 }
 
 app.post('/zapi-webhook', async (req, res) => {
+  console.log('Mensagem recebida da Z-API:', req.body);
+
   try {
     const { from, message } = req.body;
 
@@ -59,7 +61,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     res.status(200).send('OK');
   } catch (err) {
-    console.error('Erro:', err.message);
+    console.error('Erro ao chamar o Dialogflow:', err.response?.data || err.message);
     res.status(500).send('Erro ao processar');
   }
 });
