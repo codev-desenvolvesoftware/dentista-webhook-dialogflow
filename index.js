@@ -38,8 +38,11 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
+    const dfUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${from}/detectIntent`;
+
     const dialogflowResponse = await axios.post(
-      `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${from}/detectIntent`,
+      
+      console.log('🔗 URL Dialogflow:', dfUrl),
       {
         queryInput: {
           text: {
