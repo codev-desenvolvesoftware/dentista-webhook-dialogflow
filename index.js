@@ -24,7 +24,7 @@ async function getAccessToken() {
   const client = await auth.getClient();
   const tokenResponse = await client.getAccessToken();
   accessToken = tokenResponse.token;
-  tokenExpiry = Date.now() + 50 * 60 * 1000; // expira em 50 minutos
+  tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
 
 app.post('/zapi-webhook', async (req, res) => {
@@ -45,28 +45,41 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
-    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
+    if (!message) {
+      throw new Error("Mensagem inválida: 'message' está vazia ou null");
+    }
 
-    // Monta o corpo da requisição para Dialogflow aqui, com a variável message definida
+    if (!sessionId) {
+      throw new Error("SessionId inválido");
+    }
+
     const body = {
       queryInput: {
         text: {
           text: message,
           languageCode: 'pt-BR'
         }
-      }
+      },
+      queryParams: {}  // Evita null que gera erro 400
     };
+
+    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
     console.log("📝 Conteúdo da mensagem:", message);
+    console.log("📦 Corpo enviado para Dialogflow:", JSON.stringify(body, null, 2));
     console.log("🔑 Usando token de acesso:", accessToken);
 
-    const dialogflowResponse = await axios.post(dialogflowUrl, body, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const dialogflowResponse = await axios.post(
+      dialogflowUrl,
+      body,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
     console.log("🤖 Resposta do Dialogflow:", reply);
