@@ -4,6 +4,13 @@ const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 require('dotenv').config();
 
+
+console.log("🧪 Variáveis de ambiente carregadas:", process.env);
+console.log("🔑 ZAPI_INSTANCE_ID:", process.env.ZAPI_INSTANCE_ID);
+console.log("🔑 ZAPI_TOKEN:", process.env.ZAPI_TOKEN);
+console.log("🔑 DF_PROJECT_ID:", process.env.DF_PROJECT_ID);
+
+
 const app = express();
 app.use(bodyParser.json());
 
@@ -40,6 +47,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const dfUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${from}/detectIntent`;
 
+
+    console.log("🔍 DF_PROJECT_ID:", process.env.DF_PROJECT_ID);    
     const dialogflowResponse = await axios.post(
       
       console.log('🔗 URL Dialogflow:', dfUrl),
@@ -60,6 +69,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
 
+    console.log('🤖 Resposta do Dialogflow:', reply);
     await axios.post(
       `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE_ID}/token/${process.env.ZAPI_TOKEN}/send-messages`,
       {
