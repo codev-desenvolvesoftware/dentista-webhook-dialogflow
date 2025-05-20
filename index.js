@@ -4,9 +4,12 @@ const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 require('dotenv').config();
 
+const ZAPI_INSTANCE_ID = process.env.ZAPI_INSTANCE_ID;
+const ZAPI_TOKEN = process.env.ZAPI_TOKEN;
+
 console.log("🧪 Variáveis de ambiente carregadas:", process.env);
-console.log("🔑 ZAPI_INSTANCE_ID:", process.env.ZAPI_INSTANCE_ID);
-console.log("🔑 ZAPI_TOKEN:", process.env.ZAPI_TOKEN);
+console.log("🔑 ZAPI_INSTANCE_ID:", ZAPI_INSTANCE_ID);
+console.log("🔑 ZAPI_TOKEN:", ZAPI_TOKEN);
 console.log("🔑 DF_PROJECT_ID:", process.env.DF_PROJECT_ID);
 
 const app = express();
@@ -45,14 +48,6 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
-    if (!message) {
-      throw new Error("Mensagem inválida: 'message' está vazia ou null");
-    }
-
-    if (!sessionId) {
-      throw new Error("SessionId inválido");
-    }
-
     const body = {
       queryInput: {
         text: {
@@ -79,18 +74,11 @@ app.post('/zapi-webhook', async (req, res) => {
         },
       }
     );
-    console.log("🧪 Corpo final enviado ao Dialogflow:", JSON.stringify(body, null, 2));
-    console.log("📡 Resposta do Dialogflow:", dialogflowResponse.data);
-    console.log("📦 Resposta completa do Dialogflow:", JSON.stringify(dialogflowResponse.data, null, 2));
-    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult, null, 2));
-    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentText, null, 2));
-    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentMessages, null, 2));
-
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
     console.log("🤖 Resposta do Dialogflow:", reply);
 
-    // Validação antes de enviar à Z-API
+    // Validações
     if (!req.body.phone || typeof req.body.phone !== 'string') {
       console.error("❌ Telefone inválido:", req.body.phone);
       return res.status(400).send("Telefone inválido");
@@ -116,5 +104,23 @@ app.post('/zapi-webhook', async (req, res) => {
 
     res.status(200).send("OK");
 
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
+  } catch (err) {
+    console.error("❌ Erro ao chamar o Dialogflow ou enviar mensagem:");
+
+    if (err.response) {
+      console.error("📄 Status:", err.response.status);
+      console.error("📄 Headers:", err.response.headers);
+      console.error("📄 Data:", err.response.data);
+    } else if (err.request) {
+      console.error("📡 Nenhuma resposta recebida:", err.request);
+    } else {
+      console.error("💥 Erro na configuração da requisição:", err.message);
+    }
+
+    res.status(500).send("Erro ao processar");
+  }
+});
+
+// 🔊 Agora o listen está no lugar certo!
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
