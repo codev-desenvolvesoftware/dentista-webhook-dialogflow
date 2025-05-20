@@ -23,11 +23,17 @@ async function getAccessToken() {
 }
 
 app.post('/zapi-webhook', async (req, res) => {
-  console.log('Mensagem recebida da Z-API:', req.body);
+  console.log('📥 Mensagem recebida da Z-API:', req.body);
+
+  const from = req.body.phone;
+  const message = req.body.text?.message || '';
+
+  if (!from || !message) {
+    console.error('❌ Dados inválidos: from ou message ausentes');
+    return res.status(400).send('Dados inválidos');
+  }
 
   try {
-    const { from, message } = req.body;
-
     if (!accessToken || Date.now() >= tokenExpiry) {
       await getAccessToken();
     }
@@ -61,7 +67,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     res.status(200).send('OK');
   } catch (err) {
-    console.error('Erro ao chamar o Dialogflow:', err.response?.data || err.message);
+    console.error('❌ Erro ao chamar o Dialogflow:', err.response?.data || err.message);
     res.status(500).send('Erro ao processar');
   }
 });
