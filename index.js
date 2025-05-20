@@ -54,6 +54,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     const body = {
+      session: `projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}`,
       queryInput: {
         text: {
           text: message,
