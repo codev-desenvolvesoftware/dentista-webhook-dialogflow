@@ -101,6 +101,7 @@ app.post('/zapi-webhook', async (req, res) => {
       message: reply
     };
 
+    
     console.log("📦 Payload final para Z-API:", JSON.stringify(zapiPayload, null, 2));
 
     const zapiResponse = await axios.post(zapiUrl, zapiPayload, {
