@@ -54,7 +54,6 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     const body = {
-      session: `projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}`,
       queryInput: {
         text: {
           text: message,
@@ -80,6 +79,13 @@ app.post('/zapi-webhook', async (req, res) => {
         },
       }
     );
+    console.log("🧪 Corpo final enviado ao Dialogflow:", JSON.stringify(body, null, 2));
+    console.log("📡 Resposta do Dialogflow:", dialogflowResponse.data);
+    console.log("📦 Resposta completa do Dialogflow:", JSON.stringify(dialogflowResponse.data, null, 2));
+    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult, null, 2));
+    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentText, null, 2));
+    console.log("📦 Resposta do Dialogflow:", JSON.stringify(dialogflowResponse.data.queryResult.fulfillmentMessages, null, 2));
+    
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
     console.log("🤖 Resposta do Dialogflow:", reply);
