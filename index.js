@@ -98,8 +98,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const zapiPayload = {
       phone: cleanPhone,
-      message: reply,
-      delayMessage: 0 // pode alterar para 15 se quiser simular digitação
+      message: reply
     };
 
     console.log("📦 Payload final para Z-API:", JSON.stringify(zapiPayload, null, 2));
