@@ -59,8 +59,7 @@ app.post('/zapi-webhook', async (req, res) => {
           text: message,
           languageCode: 'pt-BR'
         }
-      },
-      queryParams: {}  // Evita null que gera erro 400
+      }
     };
 
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
