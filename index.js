@@ -29,6 +29,7 @@ async function getAccessToken() {
 
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
+  console.log("📥 Webhook recebido:", JSON.stringify(req.body, null, 2));
 
   const from = req.body.phone;
   const message = req.body.text?.message || '';
@@ -44,10 +45,18 @@ app.post('/zapi-webhook', async (req, res) => {
       await getAccessToken();
     }
 
+    if (!message) {
+      throw new Error("Mensagem inválida: 'message' está vazia ou null");
+    }
+
+    if (!sessionId) {
+      throw new Error("SessionId inválido");
+    }
+
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${process.env.DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
-    console.log("📝 Mensagem:", message);
+    console.log("📝 Conteúdo da mensagem:", message);
 
     const dialogflowResponse = await axios.post(
       dialogflowUrl,
@@ -55,43 +64,44 @@ app.post('/zapi-webhook', async (req, res) => {
         queryInput: {
           text: {
             text: message,
-            languageCode: 'pt-BR'
-          }
-        }
+            languageCode: "pt-BR",
+          },
+        },
       },
       {
         headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
       }
     );
 
     const reply = dialogflowResponse.data.queryResult.fulfillmentText;
-    console.log('🤖 Resposta do Dialogflow:', reply);
+    console.log("🤖 Resposta do Dialogflow:", reply);
 
     await axios.post(
       `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE_ID}/token/${process.env.ZAPI_TOKEN}/send-messages`,
       {
         phone: from,
-        message: reply
+        message: reply,
       }
     );
 
-    res.status(200).send('OK');
+    res.status(200).send("OK");
   } catch (err) {
-    console.error('❌ Erro ao chamar o Dialogflow:');
+    console.error("❌ Erro ao chamar o Dialogflow:");
 
     if (err.response) {
-      console.error('📄 Status:', err.response.status);
-      console.error('📄 Headers:', err.response.headers);
-      console.error('📄 Data:', err.response.data);
+      console.error("📄 Status:", err.response.status);
+      console.error("📄 Headers:", err.response.headers);
+      console.error("📄 Data:", err.response.data);
     } else if (err.request) {
-      console.error('📡 Nenhuma resposta recebida:', err.request);
+      console.error("📡 Nenhuma resposta recebida:", err.request);
     } else {
-      console.error('💥 Erro na configuração da requisição:', err.message);
+      console.error("💥 Erro na configuração da requisição:", err.message);
     }
 
-    res.status(500).send('Erro ao processar');
+    res.status(500).send("Erro ao processar");
   }
 });
 
