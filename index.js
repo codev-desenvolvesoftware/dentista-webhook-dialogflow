@@ -57,15 +57,38 @@ async function getAccessToken() {
   tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
 
+// Verifica se a aba Atendimentos existe e cria se não existir
+async function ensureSheetTabExists(sheetName) {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: authClient });
+    const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEETS_ID });
+    const exists = metadata.data.sheets.some(s => s.properties.title === sheetName);
+
+    if (!exists) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: GOOGLE_SHEETS_ID,
+        requestBody: {
+          requests: [{ addSheet: { properties: { title: sheetName } } }]
+        }
+      });
+      console.log(`✅ Aba '${sheetName}' criada automaticamente.`);
+    }
+  } catch (err) {
+    console.error("❌ Erro ao verificar/criar a aba da planilha:", err.message);
+  }
+}
+
 // Enviar log para o Google Sheets
 async function logToSheet({ phone, message, type, intent }) {
   try {
     const sheets = google.sheets({ version: 'v4', auth: authClient });
     const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const sheetName = 'Atendimentos';
 
+    await ensureSheetTabExists(sheetName);
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEETS_ID,
-      range: 'Atendimentos!A:D',
+      range: `${sheetName}!A:E`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[now, phone, message, type, intent || '']]
@@ -97,6 +120,17 @@ async function notifyTelegram(phone, message) {
 
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
+
+  if (
+    req.body.isNewsletter ||
+    String(req.body.phone).includes('@newsletter') ||
+    req.body.isGroup ||
+    req.body.type !== 'ReceivedCallback'
+  ) {
+    console.log("🚫 Mensagem ignorada (newsletter, grupo ou tipo não suportado).");
+    return res.status(200).send("Ignorado");
+  }
+
   const from = req.body.phone;
   const message = req.body.text?.message || '';
   const sessionId = `session-${from}`;
@@ -121,6 +155,13 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const cleanPhone = String(from).replace(/\D/g, '');
     if (!cleanPhone.match(/^55\d{10,11}$/)) return res.status(400).send("Telefone inválido");
+
+    // Mensagens de atendimento do atendete registradas no Sheets, quando é trasferido para humano
+    if (!reply) {
+      console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
+      await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
+      return res.status(200).send("Mensagem humana registrada.");
+    }
 
     await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
 
