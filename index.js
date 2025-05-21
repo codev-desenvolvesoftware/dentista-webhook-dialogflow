@@ -4,13 +4,15 @@ const { GoogleAuth } = require('google-auth-library');
 const { google } = require('googleapis');
 const axios = require('axios');
 require('dotenv').config();
+const { JWT } = require('google-auth-library');
 
 const {
   ZAPI_INSTANCE_ID,
   ZAPI_INSTANCE_TOKEN,
   ZAPI_CLIENT_TOKEN,
   DF_PROJECT_ID,
-  GOOGLE_APPLICATION_CREDENTIALS_BASE64,
+  GOOGLE_DIALOGFLOW_CREDENTIALS_BASE64,
+  GOOGLE_SHEETS_CREDENTIALS_BASE64,
   TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID,
   GOOGLE_SHEETS_ID
@@ -27,7 +29,7 @@ console.log("🧪 Variáveis de ambiente carregadas:", {
   GOOGLE_SHEETS_ID: !!GOOGLE_SHEETS_ID
 });
 
-if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64 || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !GOOGLE_SHEETS_ID) {
+if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJECT_ID || !GOOGLE_DIALOGFLOW_CREDENTIALS_BASE64 || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !GOOGLE_SHEETS_ID) {
   console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas!");
   process.exit(1);
 }
@@ -35,32 +37,44 @@ if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJE
 const app = express();
 app.use(bodyParser.json());
 
+let dialogflowAuthClient = null;
+let sheetsAuthClient = null;
 let accessToken = null;
 let tokenExpiry = 0;
-let authClient = null;
 
-async function getAccessToken() {
-  if (!authClient) {
-    const credentials = JSON.parse(Buffer.from(GOOGLE_APPLICATION_CREDENTIALS_BASE64, 'base64').toString('utf8'));
+// Autenticação Dialogflow
+async function getDialogflowAccessToken() {
+  if (!dialogflowAuthClient) {
+    const credentials = JSON.parse(Buffer.from(GOOGLE_DIALOGFLOW_CREDENTIALS_BASE64, 'base64').toString('utf8'));
     const auth = new GoogleAuth({
       credentials,
-      scopes: [
-        'https://www.googleapis.com/auth/dialogflow',
-        'https://www.googleapis.com/auth/spreadsheets'
-      ]
+      scopes: ['https://www.googleapis.com/auth/dialogflow']
     });
-    authClient = await auth.getClient();
+    dialogflowAuthClient = await auth.getClient();
   }
 
-  const tokenResponse = await authClient.getAccessToken();
+  const tokenResponse = await dialogflowAuthClient.getAccessToken();
   accessToken = tokenResponse.token;
   tokenExpiry = Date.now() + 50 * 60 * 1000;
+}
+
+// Autenticação Google Sheets
+async function getSheetsAuthClient() {
+  if (!sheetsAuthClient) {
+    const credentials = JSON.parse(Buffer.from(GOOGLE_SHEETS_CREDENTIALS_BASE64, 'base64').toString('utf8'));
+    const auth = new GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+    sheetsAuthClient = await auth.getClient();
+  }
+  return sheetsAuthClient;
 }
 
 // Verifica se a aba Atendimentos existe e cria se não existir
 async function ensureSheetTabExists(sheetName) {
   try {
-    const sheets = google.sheets({ version: 'v4', auth: authClient });
+    const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
     const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEETS_ID });
     const exists = metadata.data.sheets.some(s => s.properties.title === sheetName);
 
@@ -81,7 +95,7 @@ async function ensureSheetTabExists(sheetName) {
 // Enviar log para o Google Sheets
 async function logToSheet({ phone, message, type, intent }) {
   try {
-    const sheets = google.sheets({ version: 'v4', auth: authClient });
+    const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
     const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const sheetName = 'Atendimentos';
 
@@ -195,7 +209,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
   if (messageText === '/status') {
     try {
-      const sheets = google.sheets({ version: 'v4', auth: authClient });
+      const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: GOOGLE_SHEETS_ID,
         range: 'Atendimentos!A:D'
@@ -215,7 +229,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
   if (messageText === '/clientes') {
     try {
-      const sheets = google.sheets({ version: 'v4', auth: authClient });
+      const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: GOOGLE_SHEETS_ID,
         range: 'Atendimentos!A:D'
@@ -259,7 +273,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
     if (action === 'historico') {
       try {
-        const sheets = google.sheets({ version: 'v4', auth: authClient });
+        const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId: GOOGLE_SHEETS_ID,
           range: 'Atendimentos!A:D'
