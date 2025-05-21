@@ -9,17 +9,22 @@ const ZAPI_INSTANCE_TOKEN = process.env.ZAPI_INSTANCE_TOKEN;
 const ZAPI_CLIENT_TOKEN = process.env.ZAPI_CLIENT_TOKEN;
 const DF_PROJECT_ID = process.env.DF_PROJECT_ID;
 const GOOGLE_APPLICATION_CREDENTIALS_BASE64 = process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64;
+// Telegram do bot para transbordo de atendimento humano
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 console.log("🧪 Variáveis de ambiente carregadas:", {
   ZAPI_INSTANCE_ID,
   ZAPI_INSTANCE_TOKEN: ZAPI_INSTANCE_TOKEN ? '*****' : null,
   ZAPI_CLIENT_TOKEN: ZAPI_CLIENT_TOKEN ? '*****' : null,
   DF_PROJECT_ID,
-  GOOGLE_APPLICATION_CREDENTIALS_BASE64: GOOGLE_APPLICATION_CREDENTIALS_BASE64 ? 'definida' : 'NÃO DEFINIDA'
+  GOOGLE_APPLICATION_CREDENTIALS_BASE64: GOOGLE_APPLICATION_CREDENTIALS_BASE64 ? 'definida' : 'NÃO DEFINIDA',
+  TELEGRAM_BOT_TOKEN: TELEGRAM_BOT_TOKEN ? '*****' : null,
+  TELEGRAM_CHAT_ID: TELEGRAM_CHAT_ID ? '*****' : null
 });
 
-if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64) {
-  console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas! Verifique .env");
+if (!ZAPI_INSTANCE_ID || !ZAPI_INSTANCE_TOKEN || !ZAPI_CLIENT_TOKEN || !DF_PROJECT_ID || !GOOGLE_APPLICATION_CREDENTIALS_BASE64 || !TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+  console.error("❌ ERRO: Variáveis de ambiente obrigatórias não definidas!");
   process.exit(1);
 }
 
@@ -42,7 +47,17 @@ async function getAccessToken() {
 
   const tokenResponse = await authClient.getAccessToken();
   accessToken = tokenResponse.token;
-  tokenExpiry = Date.now() + 50 * 60 * 1000; // 50 minutos
+  tokenExpiry = Date.now() + 50 * 60 * 1000;
+}
+
+async function notifyTelegram(phone, message) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const text = `📞 Novo pedido de atendimento humano\nTelefone: ${phone}\nMensagem: ${message}`;
+
+  return axios.post(url, {
+    chat_id: TELEGRAM_CHAT_ID,
+    text
+  });
 }
 
 app.post('/zapi-webhook', async (req, res) => {
@@ -63,7 +78,6 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
-
     const body = {
       queryInput: {
         text: {
@@ -74,7 +88,6 @@ app.post('/zapi-webhook', async (req, res) => {
     };
 
     console.log("📡 Enviando para Dialogflow:", dialogflowUrl);
-    console.log("📝 Conteúdo da mensagem:", message);
 
     const dialogflowResponse = await axios.post(dialogflowUrl, body, {
       headers: {
@@ -83,7 +96,9 @@ app.post('/zapi-webhook', async (req, res) => {
       },
     });
 
-    const reply = dialogflowResponse.data.queryResult?.fulfillmentText?.trim();
+    const queryResult = dialogflowResponse.data.queryResult;
+    const reply = queryResult?.fulfillmentText?.trim();
+    const intent = queryResult?.intent?.displayName;
 
     if (!reply) {
       console.error("❌ Resposta vazia ou inválida do Dialogflow");
@@ -92,16 +107,13 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const cleanPhone = String(from).replace(/\D/g, '');
     if (!cleanPhone.match(/^55\d{10,11}$/)) {
-      console.error("❌ Telefone inválido ou formato incorreto:", cleanPhone);
+      console.error("❌ Telefone inválido:", cleanPhone);
       return res.status(400).send("Telefone inválido");
     }
 
     const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
 
-    console.log("📤 Enviando resposta para Z-API:", {
-      phone: cleanPhone,
-      message: reply
-    });
+    console.log("📤 Enviando resposta para Z-API:", { phone: cleanPhone, message: reply });
 
     await axios.post(zapiUrl, {
       phone: cleanPhone,
@@ -113,18 +125,23 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     });
 
+    // 🔔 Se a intent for "FalarComAtendente", aciona o Telegram
+    if (intent === 'FalarComAtendente') {
+      console.log('📢 Notificando Telegram para atendimento humano...');
+      await notifyTelegram(cleanPhone, message);
+    }
+
     res.status(200).send("OK");
 
   } catch (err) {
-    console.error("❌ Erro ao chamar o Dialogflow ou enviar mensagem:");
+    console.error("❌ Erro ao processar mensagem:");
     if (err.response) {
       console.error("📄 Status:", err.response.status);
-      console.error("📄 Headers:", err.response.headers);
       console.error("📄 Data:", err.response.data);
     } else if (err.request) {
       console.error("📡 Nenhuma resposta recebida:", err.request);
     } else {
-      console.error("💥 Erro na configuração da requisição:", err.message);
+      console.error("💥 Erro:", err.message);
     }
     res.status(500).send("Erro ao processar");
   }
