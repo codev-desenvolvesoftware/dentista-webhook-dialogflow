@@ -16,6 +16,7 @@ const {
   GOOGLE_SHEETS_ID
 } = process.env;
 
+
 console.log("🧪 Variáveis de ambiente carregadas:", {
   ZAPI_INSTANCE_ID,
   ZAPI_INSTANCE_TOKEN: !!ZAPI_INSTANCE_TOKEN,
