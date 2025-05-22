@@ -53,7 +53,7 @@ async function getDialogflowAccessToken() {
     dialogflowAuthClient = await auth.getClient();
   }
 
-  const tokenResponse = await dialogflowAuthClient.accessToken();
+  const tokenResponse = await dialogflowAuthClient.getAccessToken();
   accessToken = tokenResponse.token;
   tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
@@ -152,7 +152,7 @@ app.post('/zapi-webhook', async (req, res) => {
   if (!from || !message) return res.status(400).send('Dados inválidos');
 
   try {
-    if (!accessToken || Date.now() >= tokenExpiry) await accessToken();
+    if (!accessToken || Date.now() >= tokenExpiry) await getDialogflowAccessToken();
 
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
     const dialogflowResponse = await axios.post(dialogflowUrl, {
