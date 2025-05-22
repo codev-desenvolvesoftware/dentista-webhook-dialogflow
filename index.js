@@ -237,6 +237,17 @@ app.post('/zapi-webhook', async (req, res) => {
       const procedimento = parameters.fields?.procedimento?.stringValue || '';
       const tipoAgendamento = 'avaliação';
 
+      if (!nome || !data || !hora || !procedimento) {
+        console.warn("⚠️ Ainda com parâmetros ausentes mesmo após fallback:", { nome, data, hora, procedimento });
+        const fallback = extractFallbackFields(message);
+        nome = nome || fallback.nome;
+        data = data || fallback.data;
+        hora = hora || fallback.hora;
+        procedimento = procedimento || fallback.procedimento;
+      } else {
+        console.log("🧠 Parâmetros extraídos com sucesso (com fallback se necessário).");
+      }
+
       if (nome && data && hora && procedimento) {
         await logToAgendamentosSheet({
           nome,
@@ -251,12 +262,12 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
-      res.status(200).send("OK");
-    } catch (err) {
-      console.error("❌ Erro ao processar mensagem:", err.message);
-      res.status(500).send("Erro ao processar");
-    }
-  });
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("❌ Erro ao processar mensagem:", err.message);
+    res.status(500).send("Erro ao processar");
+  }
+});
 
 const router = express.Router();
 
