@@ -53,7 +53,7 @@ async function getDialogflowAccessToken() {
     dialogflowAuthClient = await auth.getClient();
   }
 
-  const tokenResponse = await dialogflowAuthClient.getAccessToken();
+  const tokenResponse = await dialogflowAuthClient.accessToken();
   accessToken = tokenResponse.token;
   tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
@@ -152,7 +152,7 @@ app.post('/zapi-webhook', async (req, res) => {
   if (!from || !message) return res.status(400).send('Dados inválidos');
 
   try {
-    if (!accessToken || Date.now() >= tokenExpiry) await getAccessToken();
+    if (!accessToken || Date.now() >= tokenExpiry) await accessToken();
 
     const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
     const dialogflowResponse = await axios.post(dialogflowUrl, {
@@ -242,7 +242,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
     // Monta a mensagem apenas com nome, telefone e link do WhatsApp
     const msg = pendentes.length
-      ? `👥 *Clientes em atendimento:*\n${pendentes.map(p => {
+      ? `*Clientes em atendimento:*\n${pendentes.map(p => {
           const nome = p[0];
           const telefone = p[1].replace(/\D/g, '');
           const telefoneFormatado = p[1];
@@ -253,7 +253,8 @@ app.post('/telegram-webhook', async (req, res) => {
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       chat_id: TELEGRAM_CHAT_ID,
       text: msg,
-      parse_mode: 'Markdown'
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true // Removendo o preview do botão do WhatsApp (share on whatsapp)
     });
   } catch (err) {
     console.error("Erro ao responder /clientes:", err.message);
@@ -291,7 +292,9 @@ app.post('/telegram-webhook', async (req, res) => {
           range: 'Atendimentos!A:D'
         });
 
-        const historico = response.data.values?.filter(row => row[1] === phone).slice(-5).reverse();
+        
+        const historico = response.data.values?.filter(row => row[1] === phone).slice(-10).reverse();
+
         const historicoText = historico.length
           ? `📜 *Últimas mensagens de ${phone}:*\n${historico.map(r => `🕓 ${r[0]}\n💬 ${r[2]}\n`).join('\n')}`
           : `Nenhum histórico recente encontrado.`;
