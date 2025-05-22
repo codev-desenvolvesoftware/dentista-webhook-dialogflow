@@ -245,7 +245,6 @@ router.post('/zapi-outgoing', async (req, res) => {
   }
 });
 
-export default router;
 
 // Rota para o webhook do Telegram que escuta cliques nos botões
 app.post('/telegram-webhook', async (req, res) => {
