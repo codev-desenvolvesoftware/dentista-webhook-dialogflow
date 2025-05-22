@@ -227,27 +227,39 @@ app.post('/telegram-webhook', async (req, res) => {
     }
   }
 
+  // Comando /clientes para listar clientes em atendimento
   if (messageText === '/clientes') {
-    try {
-      const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: GOOGLE_SHEETS_ID,
-        range: 'Atendimentos!A:D'
-      });
-      const values = response.data.values || [];
-      const pendentes = values.filter(row => row[3] === 'humano');
-      const msg = pendentes.length
-        ? `👥 *Clientes em atendimento:*\n${pendentes.map(p => `📞 ${p[1]} | 💬 ${p[2]}`).join('\n')}`
-        : `✅ Nenhum cliente aguardando atendimento.`;
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        chat_id: TELEGRAM_CHAT_ID,
-        text: msg,
-        parse_mode: 'Markdown'
-      });
-    } catch (err) {
-      console.error("Erro ao responder /clientes:", err.message);
-    }
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_ID,
+      range: 'Atendimentos!A:D'
+    });
+    const values = response.data.values || [];
+
+    // Filtra os que estão em atendimento humano
+    const pendentes = values.filter(row => row[3] === 'humano');
+
+    // Monta a mensagem apenas com nome, telefone e link do WhatsApp
+    const msg = pendentes.length
+      ? `👥 *Clientes em atendimento:*\n${pendentes.map(p => {
+          const nome = p[0];
+          const telefone = p[1].replace(/\D/g, '');
+          const telefoneFormatado = p[1];
+          return `👤 *${nome}*\n📞 ${telefoneFormatado} | [Abrir WhatsApp](https://wa.me/${telefone})`;
+        }).join('\n\n')}`
+      : `✅ Nenhum cliente aguardando atendimento.`;
+
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      chat_id: TELEGRAM_CHAT_ID,
+      text: msg,
+      parse_mode: 'Markdown'
+    });
+  } catch (err) {
+    console.error("Erro ao responder /clientes:", err.message);
   }
+}
+
 
   if (callbackQuery && callbackQuery.data) {
     const [action, phone] = callbackQuery.data.split(':');
