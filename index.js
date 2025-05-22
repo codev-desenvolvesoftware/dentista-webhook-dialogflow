@@ -203,29 +203,49 @@ app.post('/zapi-webhook', async (req, res) => {
   }
 });
 
+const router = express.Router();
+
 // Rota para capturar as mensagens enviadas do atendente para o cliente
-app.post('/zapi-outgoing', async (req, res) => {
-  console.log('📤 Mensagem enviada detectada:', req.body);
+router.post('/zapi-outgoing', async (req, res) => {
+  try {
+    const { type, message, phone } = req.body;
 
-  // Verifica se é uma mensagem do atendente
-  if (
-    req.body.type === 'SentCallback' &&
-    req.body.message &&
-    req.body.phone &&
-    !req.body.message.includes('Seu atendimento foi marcado como resolvido') // Evita logs automáticos
-  ) {
-    const phone = String(req.body.phone).replace(/\D/g, '');
-    const message = req.body.message;
-
-    try {
-      await logToSheet({ phone, message, type: 'humano', intent: '' });
-    } catch (err) {
-      console.error("❌ Erro ao registrar mensagem enviada pelo atendente:", err.message);
+    // Ignora se não houver mensagem ou telefone
+    if (!message || !phone) {
+      return res.status(200).send('Ignored: Missing message or phone');
     }
-  }
 
-  res.status(200).send("OK");
+    // Ignora mensagens automáticas
+    if (message.includes('Seu atendimento foi marcado como resolvido')) {
+      return res.status(200).send('Ignored: Auto-resolved message');
+    }
+
+    // Registra mensagens enviadas por atendente humano
+    if (['SentCallback', 'DeliveryCallback'].includes(type)) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+
+      console.log("📤 Mensagem enviada detectada:", {
+        phone: cleanPhone,
+        message,
+        type
+      });
+
+      await logToSheet({
+        phone: cleanPhone,
+        message,
+        type: 'humano',
+        intent: ''
+      });
+    }
+
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('Erro no /zapi-outgoing:', err.message);
+    res.status(500).send('Erro interno');
+  }
 });
+
+export default router;
 
 // Rota para o webhook do Telegram que escuta cliques nos botões
 app.post('/telegram-webhook', async (req, res) => {
