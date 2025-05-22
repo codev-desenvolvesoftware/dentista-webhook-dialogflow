@@ -132,6 +132,7 @@ async function notifyTelegram(phone, message) {
   });
 }
 
+// Rota do webhook da Z-API
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
 
@@ -192,7 +193,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
-      await logToSheet({ phone: cleanPhone, message, type: 'humano', intent });
+      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
     }
 
     res.status(200).send("OK");
@@ -202,7 +203,31 @@ app.post('/zapi-webhook', async (req, res) => {
   }
 });
 
-// Nova rota para o webhook do Telegram que escuta cliques nos botões
+// Rota para capturar as mensagens enviadas do atendente para o cliente
+app.post('/zapi-outgoing', async (req, res) => {
+  console.log('📤 Mensagem enviada detectada:', req.body);
+
+  // Verifica se é uma mensagem do atendente
+  if (
+    req.body.type === 'SentCallback' &&
+    req.body.message &&
+    req.body.phone &&
+    !req.body.message.includes('Seu atendimento foi marcado como resolvido') // Evita logs automáticos
+  ) {
+    const phone = String(req.body.phone).replace(/\D/g, '');
+    const message = req.body.message;
+
+    try {
+      await logToSheet({ phone, message, type: 'humano', intent: '' });
+    } catch (err) {
+      console.error("❌ Erro ao registrar mensagem enviada pelo atendente:", err.message);
+    }
+  }
+
+  res.status(200).send("OK");
+});
+
+// Rota para o webhook do Telegram que escuta cliques nos botões
 app.post('/telegram-webhook', async (req, res) => {
   const callbackQuery = req.body.callback_query;
   const messageText = req.body.message?.text;
@@ -215,7 +240,7 @@ app.post('/telegram-webhook', async (req, res) => {
         range: 'Atendimentos!A:D'
       });
       const values = response.data.values || [];
-      const pendentes = values.filter(row => row[3] === 'humano');
+      const pendentes = values.filter(row => row[3] === 'transbordo humano');
       const msg = `🤖 Atualmente há *${pendentes.length}* atendimento(s) pendente(s).`;
       await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
         chat_id: TELEGRAM_CHAT_ID,
@@ -312,6 +337,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
   res.sendStatus(200);
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
