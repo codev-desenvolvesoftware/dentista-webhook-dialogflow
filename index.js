@@ -198,6 +198,7 @@ app.post('/zapi-webhook', async (req, res) => {
     const queryResult = dialogflowResponse.data.queryResult;
     const reply = queryResult?.fulfillmentText?.trim();
     const intent = queryResult?.intent?.displayName;
+    const parameters = queryResult?.parameters || {};
 
     if (!reply) return res.status(400).send("Resposta inválida do Dialogflow");
 
@@ -229,12 +230,33 @@ app.post('/zapi-webhook', async (req, res) => {
       await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
     }
 
-    res.status(200).send("OK");
-  } catch (err) {
-    console.error("❌ Erro ao processar mensagem:", err.message);
-    res.status(500).send("Erro ao processar");
-  }
-});
+    if (intent === 'AgendarAvaliacao') {
+      const nome = parameters.fields?.nome?.stringValue || '';
+      const data = parameters.fields?.data?.stringValue || '';
+      const hora = parameters.fields?.hora?.stringValue || '';
+      const procedimento = parameters.fields?.procedimento?.stringValue || '';
+      const tipoAgendamento = 'avaliação';
+
+      if (nome && data && hora && procedimento) {
+        await logToAgendamentosSheet({
+          nome,
+          telefone: cleanPhone,
+          tipoAgendamento,
+          data,
+          hora,
+          procedimento
+        });
+      } else {
+        console.warn("⚠️ Parâmetros ausentes no agendamento:", { nome, data, hora, procedimento });
+      }
+    }
+
+      res.status(200).send("OK");
+    } catch (err) {
+      console.error("❌ Erro ao processar mensagem:", err.message);
+      res.status(500).send("Erro ao processar");
+    }
+  });
 
 const router = express.Router();
 
