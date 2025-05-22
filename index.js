@@ -225,7 +225,7 @@ app.post('/zapi-outgoing', async (req, res) => {
     text = req.body.message.body;
   }
 
-  if (type === 'SentCallback' && text && phone) { 
+  if (type === 'SentCallback' && text && phone) {
     console.log("📝 Conteúdo detectado como mensagem humana:", text);
   }
 
@@ -239,118 +239,121 @@ app.post('/zapi-outgoing', async (req, res) => {
       console.log("✅ Mensagem humana registrada no Sheets:", text);
     }
   }
+  res.sendStatus(200);
+});
 
-  // Rota para o webhook do Telegram que escuta cliques nos botões
-  app.post('/telegram-webhook', async (req, res) => {
-    const callbackQuery = req.body.callback_query;
-    const messageText = req.body.message?.text;
 
-    if (messageText === '/status') {
+// Rota para o webhook do Telegram que escuta cliques nos botões
+app.post('/telegram-webhook', async (req, res) => {
+  const callbackQuery = req.body.callback_query;
+  const messageText = req.body.message?.text;
+
+  if (messageText === '/status') {
+    try {
+      const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEETS_ID,
+        range: 'Atendimentos!A:D'
+      });
+      const values = response.data.values || [];
+      const pendentes = values.filter(row => row[3] === 'transbordo humano');
+      const msg = `🤖 Atualmente há *${pendentes.length}* atendimento(s) pendente(s).`;
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: msg,
+        parse_mode: 'Markdown'
+      });
+    } catch (err) {
+      console.error("Erro ao responder /status:", err.message);
+    }
+  }
+
+  // Comando /clientes para listar clientes em atendimento
+  if (messageText === '/clientes') {
+    try {
+      const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: GOOGLE_SHEETS_ID,
+        range: 'Atendimentos!A:D'
+      });
+      const values = response.data.values || [];
+
+      // Filtra os que estão em atendimento humano
+      const pendentes = values.filter(row => row[3] === 'humano');
+
+      // Monta a mensagem apenas com nome, telefone e link do WhatsApp
+      const msg = pendentes.length
+        ? `*Clientes em atendimento:*\n${pendentes.map(p => {
+          const nome = p[0];
+          const telefone = p[1].replace(/\D/g, '');
+          const telefoneFormatado = p[1];
+          return `👤 *${nome}*\n📞 ${telefoneFormatado} | [Abrir WhatsApp](https://wa.me/${telefone})`;
+        }).join('\n\n')}`
+        : `✅ Nenhum cliente aguardando atendimento.`;
+
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: msg,
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true // Removendo o preview do botão do WhatsApp (share on whatsapp)
+      });
+    } catch (err) {
+      console.error("Erro ao responder /clientes:", err.message);
+    }
+  }
+
+
+  if (callbackQuery && callbackQuery.data) {
+    const [action, phone] = callbackQuery.data.split(':');
+
+    if (action === 'resolve') {
+      const replyText = `✅ Atendimento com o número *${phone}* foi marcado como resolvido.`;
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        chat_id: TELEGRAM_CHAT_ID,
+        text: replyText,
+        parse_mode: "Markdown"
+      });
+
+      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
+        phone,
+        message: "Seu atendimento foi marcado como resolvido. Qualquer dúvida, é só chamar 😊"
+      }, {
+        headers: {
+          'Client-Token': ZAPI_CLIENT_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+
+    if (action === 'historico') {
       try {
         const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId: GOOGLE_SHEETS_ID,
           range: 'Atendimentos!A:D'
         });
-        const values = response.data.values || [];
-        const pendentes = values.filter(row => row[3] === 'transbordo humano');
-        const msg = `🤖 Atualmente há *${pendentes.length}* atendimento(s) pendente(s).`;
+
+
+        const historico = response.data.values?.filter(row => row[1] === phone).slice(-10).reverse();
+
+        const historicoText = historico.length
+          ? `📜 *Últimas mensagens de ${phone}:*\n${historico.map(r => `🕓 ${r[0]}\n💬 ${r[2]}\n`).join('\n')}`
+          : `Nenhum histórico recente encontrado.`;
+
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
           chat_id: TELEGRAM_CHAT_ID,
-          text: msg,
+          text: historicoText,
           parse_mode: 'Markdown'
         });
       } catch (err) {
-        console.error("Erro ao responder /status:", err.message);
+        console.error("Erro ao buscar histórico:", err.message);
       }
     }
+  }
 
-    // Comando /clientes para listar clientes em atendimento
-    if (messageText === '/clientes') {
-      try {
-        const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
-        const response = await sheets.spreadsheets.values.get({
-          spreadsheetId: GOOGLE_SHEETS_ID,
-          range: 'Atendimentos!A:D'
-        });
-        const values = response.data.values || [];
-
-        // Filtra os que estão em atendimento humano
-        const pendentes = values.filter(row => row[3] === 'humano');
-
-        // Monta a mensagem apenas com nome, telefone e link do WhatsApp
-        const msg = pendentes.length
-          ? `*Clientes em atendimento:*\n${pendentes.map(p => {
-            const nome = p[0];
-            const telefone = p[1].replace(/\D/g, '');
-            const telefoneFormatado = p[1];
-            return `👤 *${nome}*\n📞 ${telefoneFormatado} | [Abrir WhatsApp](https://wa.me/${telefone})`;
-          }).join('\n\n')}`
-          : `✅ Nenhum cliente aguardando atendimento.`;
-
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-          chat_id: TELEGRAM_CHAT_ID,
-          text: msg,
-          parse_mode: 'Markdown',
-          disable_web_page_preview: true // Removendo o preview do botão do WhatsApp (share on whatsapp)
-        });
-      } catch (err) {
-        console.error("Erro ao responder /clientes:", err.message);
-      }
-    }
+  res.sendStatus(200);
+});
 
 
-    if (callbackQuery && callbackQuery.data) {
-      const [action, phone] = callbackQuery.data.split(':');
-
-      if (action === 'resolve') {
-        const replyText = `✅ Atendimento com o número *${phone}* foi marcado como resolvido.`;
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-          chat_id: TELEGRAM_CHAT_ID,
-          text: replyText,
-          parse_mode: "Markdown"
-        });
-
-        await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-          phone,
-          message: "Seu atendimento foi marcado como resolvido. Qualquer dúvida, é só chamar 😊"
-        }, {
-          headers: {
-            'Client-Token': ZAPI_CLIENT_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        });
-      }
-
-      if (action === 'historico') {
-        try {
-          const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
-          const response = await sheets.spreadsheets.values.get({
-            spreadsheetId: GOOGLE_SHEETS_ID,
-            range: 'Atendimentos!A:D'
-          });
-
-
-          const historico = response.data.values?.filter(row => row[1] === phone).slice(-10).reverse();
-
-          const historicoText = historico.length
-            ? `📜 *Últimas mensagens de ${phone}:*\n${historico.map(r => `🕓 ${r[0]}\n💬 ${r[2]}\n`).join('\n')}`
-            : `Nenhum histórico recente encontrado.`;
-
-          await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            chat_id: TELEGRAM_CHAT_ID,
-            text: historicoText,
-            parse_mode: 'Markdown'
-          });
-        } catch (err) {
-          console.error("Erro ao buscar histórico:", err.message);
-        }
-      }
-    }
-
-    res.sendStatus(200);
-  });
-
-
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
