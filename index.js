@@ -225,15 +225,16 @@ app.post('/zapi-outgoing', async (req, res) => {
     text = req.body.message.body;
   }
 
+  if (type === 'SentCallback' && text && phone) { 
+    console.log("📝 Conteúdo detectado como mensagem humana:", text);
+  }
+
   // Filtra somente mensagens que são de saída (enviadas pelo humano manualmente)
   if (type === 'SentCallback' && text && phone) {
     const cleanPhone = phone.replace(/\D/g, '');
 
     // Ignora mensagens automáticas
     if (!text.includes("Seu atendimento foi marcado como resolvido")) {
-      if (type === 'SentCallback' && text && phone) {
-        console.log("📝 Conteúdo detectado como mensagem humana:", text);
-      }
       await logToSheet({ phone: cleanPhone, message: text, type: 'humano' });
       console.log("✅ Mensagem humana registrada no Sheets:", text);
     }
