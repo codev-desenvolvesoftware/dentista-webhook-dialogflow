@@ -71,35 +71,45 @@ async function getSheetsAuthClient() {
   return sheetsAuthClient;
 }
 
-// Verifica se a aba Atendimentos existe e cria se não existir
-async function ensureSheetTabExists(sheetName) {
+// Verifica se as abas existem e cria se não existirem
+async function ensureSheetTabsExist() {
   try {
     const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
     const metadata = await sheets.spreadsheets.get({ spreadsheetId: GOOGLE_SHEETS_ID });
-    const exists = metadata.data.sheets.some(s => s.properties.title === sheetName);
 
-    if (!exists) {
+    const existingTabs = metadata.data.sheets.map(s => s.properties.title);
+    const requiredTabs = ['Atendimentos', 'Agendamentos'];
+
+    const tabsToCreate = requiredTabs.filter(tab => !existingTabs.includes(tab));
+
+    if (tabsToCreate.length > 0) {
+      const requests = tabsToCreate.map(title => ({
+        addSheet: { properties: { title } }
+      }));
+
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: GOOGLE_SHEETS_ID,
-        requestBody: {
-          requests: [{ addSheet: { properties: { title: sheetName } } }]
-        }
+        requestBody: { requests }
       });
-      console.log(`✅ Aba '${sheetName}' criada automaticamente.`);
+
+      tabsToCreate.forEach(tab => {
+        console.log(`✅ Aba '${tab}' criada automaticamente.`);
+      });
     }
   } catch (err) {
-    console.error("❌ Erro ao verificar/criar a aba da planilha:", err.message);
+    console.error("❌ Erro ao verificar/criar abas da planilha:", err.message);
   }
 }
 
-// Enviar log para o Google Sheets
+
+// Registros de atendimentos no Sheets
 async function logToSheet({ phone, message, type, intent }) {
   try {
     const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
     const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const sheetName = 'Atendimentos';
 
-    await ensureSheetTabExists(sheetName);
+    await ensureSheetTabsExist(sheetName);
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEETS_ID,
       range: `${sheetName}!A:E`,
@@ -112,6 +122,29 @@ async function logToSheet({ phone, message, type, intent }) {
     console.error("❌ Falha ao registrar no Google Sheets:", err.message);
   }
 }
+
+// Registros de agendamentos(avaliação/consulta) no Sheets
+async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, hora, procedimento }) {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
+    const sheetName = 'Agendamentos';
+    await ensureSheetTabsExist();
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: GOOGLE_SHEETS_ID,
+      range: `${sheetName}!A:F`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[nome, telefone, tipoAgendamento, data, hora, procedimento]]
+      }
+    });
+
+    console.log(`📆 Agendamento registrado com sucesso: ${nome}, ${data} às ${hora}`);
+  } catch (err) {
+    console.error("❌ Erro ao registrar agendamento no Google Sheets:", err.message);
+  }
+}
+
 
 // Notifica Telegram
 async function notifyTelegram(phone, message) {
