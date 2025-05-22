@@ -207,23 +207,18 @@ const router = express.Router();
 
 // Rota para capturar as mensagens enviadas do atendente para o cliente
 app.post('/zapi-outgoing', async (req, res) => {
-  console.log('📤 Mensagem enviada detectada:', req.body);
+  console.log("📩 Webhook de saída recebido:", JSON.stringify(req.body, null, 2));
 
-  // Verifica se é uma mensagem do atendente
-  if (
-    req.body.type === 'SentCallback' || 'DeliveryCallback' &&
-    req.body.message &&
-    req.body.phone &&
-    !req.body.message.includes('Seu atendimento foi marcado como resolvido') // Evita logs automáticos
-  ) {
-    const phone = String(req.body.phone).replace(/\D/g, '');
-    const message = req.body.message;
+  const { type, message, phone } = req.body;
 
-    try {
-      await logToSheet({ phone, message, type: 'humano', intent: '' });
-    } catch (err) {
-      console.error("❌ Erro ao registrar mensagem enviada pelo atendente:", err.message);
-    }
+  // Verifique se `message` é string
+  const text = typeof message === 'string'
+    ? message
+    : message?.message || message?.text?.body || '';
+
+  if (type === 'SentCallback' && text && phone && !text.includes("Seu atendimento foi marcado como resolvido")) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    await logToSheet({ phone: cleanPhone, message: text, type: 'humano' });
   }
 
   res.status(200).send("OK");
