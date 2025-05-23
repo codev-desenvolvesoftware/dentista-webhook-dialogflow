@@ -198,7 +198,8 @@ function extractFallbackFields(message) {
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
-const conveniosAceitos = require('./data/convenios.json');
+let conveniosAceitos = []; // Agora é mutável
+
 try {
   const data = fs.readFileSync('./data/convenios.json', 'utf8');
   const parsedData = JSON.parse(data);
@@ -207,6 +208,7 @@ try {
     throw new Error("Arquivo JSON não possui um array 'convenios'");
   }
 
+  // Convertendo todos para lowercase e removendo espaços extras
   conveniosAceitos = parsedData.convenios.map(c => c.toLowerCase().trim());
   console.log("✅ Convênios carregados:", conveniosAceitos.length);
 } catch (err) {
