@@ -196,6 +196,9 @@ function extractFallbackFields(message) {
   };
 }
 
+
+const conveniosAceitos = JSON.parse(fs.readFileSync('./data/convenios.json', 'utf8')).convenios.map(c => c.toLowerCase().trim());
+
 // Rota do webhook da Z-API
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
@@ -230,11 +233,42 @@ app.post('/zapi-webhook', async (req, res) => {
     const reply = queryResult?.fulfillmentText?.trim();
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
+    const cleanPhone = String(from).replace(/\D/g, '');
 
     if (!reply) return res.status(400).send("Resposta inválida do Dialogflow");
-
-    const cleanPhone = String(from).replace(/\D/g, '');
     if (!cleanPhone.match(/^55\d{10,11}$/)) return res.status(400).send("Telefone inválido");
+
+    // Verificação específica para convênio informado
+    if (intent === 'ConvenioAtendido') {
+      const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
+
+      const atende = conveniosAceitos.includes(convenioInformado);
+      const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+
+      const respostaFinal = atende
+        ? `✅ Maravilha! Atendemos o convênio *${convenioInformado.toUpperCase()}*!\n\n` +
+        `Vamos agendar uma consulta? 🦷\n` +
+        `_Digite_: *Consulta* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! \n\n` +
+        `Vamos agendar uma avaliação gratuita? 😉\n` +
+        `_Digite_: *Avaliação* ou _Não_`
+
+      await logToSheet({ phone: cleanPhone, message: convenioInformado, type: 'bot', intent: novaIntent });
+
+      const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
+      await axios.post(zapiUrl, {
+        phone: cleanPhone,
+        message: respostaFinal
+      }, {
+        headers: {
+          'Client-Token': ZAPI_CLIENT_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      return res.status(200).send("OK");
+    }
+
 
     // Mensagens de atendimento do atendete registradas no Sheets, quando é trasferido para humano
     if (!reply) {
