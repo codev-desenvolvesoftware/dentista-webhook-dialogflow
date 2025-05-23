@@ -197,8 +197,23 @@ function extractFallbackFields(message) {
   };
 }
 
+// Lê o arquivo convenios.json e armazena os convênios aceitos
+let conveniosAceitos = [];
 
-const conveniosAceitos = JSON.parse(fs.readFileSync('./data/convenios.json', 'utf8')).convenios.map(c => c.toLowerCase().trim());
+try {
+  const data = fs.readFileSync('./data/convenios.json', 'utf8');
+  const parsedData = JSON.parse(data);
+
+  if (!Array.isArray(parsedData.convenios)) {
+    throw new Error("Arquivo JSON não possui um array 'convenios'");
+  }
+
+  conveniosAceitos = parsedData.convenios.map(c => c.toLowerCase().trim());
+
+} catch (err) {
+  console.error("❌ Erro ao ler ou processar o arquivo convenios.json:", err.message);
+}
+
 
 // Rota do webhook da Z-API
 app.post('/zapi-webhook', async (req, res) => {
