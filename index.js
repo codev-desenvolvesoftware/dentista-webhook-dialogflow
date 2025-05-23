@@ -209,7 +209,7 @@ try {
   }
 
   conveniosAceitos = parsedData.convenios.map(c => c.toLowerCase().trim());
-
+  console.log("✅ Convênios carregados:", conveniosAceitos.length);
 } catch (err) {
   console.error("❌ Erro ao ler ou processar o arquivo convenios.json:", err.message);
 }
@@ -258,19 +258,35 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'ConvenioAtendido') {
       const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
 
-      const atende = conveniosAceitos.includes(convenioInformado);
+      // Verificação do convênio com busca parcial
+      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(c));
+
+      const atende = Boolean(convenioEncontrado);
       const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
+      if (atende) {
+        console.log("✅ Convênio reconhecido:", convenioEncontrado);
+      } else {
+        console.log("❌ Convênio não reconhecido:", convenioInformado);
+      }
+
       const respostaFinal = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioInformado.toUpperCase()}*!\n\n` +
+        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\n\n` +
         `Vamos agendar uma consulta? 🦷\n` +
         `_Digite_: *Consulta* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! \n\n` +
-        `Vamos agendar uma avaliação gratuita? 😉\n` +
-        `_Digite_: *Avaliação* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉 \n\n` +
+        `Vamos agendar uma avaliação gratuita? 🦷\n` +
+        `_Digite_: *Avaliação* ou _Não_`;
 
-      await logToSheet({ phone: cleanPhone, message: convenioInformado, type: 'bot', intent: novaIntent });
+      // Log da resposta no Google Sheets
+      await logToSheet({
+        phone: cleanPhone,
+        message: convenioInformado,
+        type: 'bot',
+        intent: novaIntent
+      });
 
+      // Envio da resposta ao WhatsApp via Z-API
       const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
       await axios.post(zapiUrl, {
         phone: cleanPhone,
