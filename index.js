@@ -198,8 +198,7 @@ function extractFallbackFields(message) {
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
-let conveniosAceitos = [];
-
+const conveniosAceitos = require('./data/convenios.json');
 try {
   const data = fs.readFileSync('./data/convenios.json', 'utf8');
   const parsedData = JSON.parse(data);
@@ -250,6 +249,11 @@ app.post('/zapi-webhook', async (req, res) => {
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
     const cleanPhone = String(from).replace(/\D/g, '');
+
+    console.log("🧠 Intent recebida:", intent);
+    console.log("📦 Parâmetros recebidos:", parameters);
+    console.log("✅ conveniosAceitos:", conveniosAceitos);
+
 
     if (!reply) return res.status(400).send("Resposta inválida do Dialogflow");
     if (!cleanPhone.match(/^55\d{10,11}$/)) return res.status(400).send("Telefone inválido");
