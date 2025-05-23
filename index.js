@@ -165,6 +165,37 @@ async function notifyTelegram(phone, message) {
   });
 }
 
+// Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
+function extractFallbackFields(message) {
+  if (!message) return { nome: '', data: '', hora: '', procedimento: '' };
+
+  // Normaliza
+  const msg = message.toLowerCase();
+
+  // Nome: assume que aparece no início ou antes da data
+  const nomeMatch = msg.match(/^(.+?)(?=\s+\d{1,2}\/\d{1,2})/i);
+
+  // Data: dd/mm ou dd/mm/yyyy
+  const dataMatch = msg.match(/(\d{1,2}\/\d{1,2}(\/\d{2,4})?)/);
+
+  // Hora: 10h, 10:30, 10h30 etc
+  const horaMatch = msg.match(/(\d{1,2}[:h]\d{0,2})/);
+
+  // Procedimento: assume que vem depois da hora
+  let procedimento = '';
+  if (horaMatch?.index !== undefined) {
+    const afterHora = msg.slice(horaMatch.index + horaMatch[0].length).trim();
+    procedimento = afterHora;
+  }
+
+  return {
+    nome: nomeMatch?.[1]?.trim() || '',
+    data: dataMatch?.[1] || '',
+    hora: horaMatch?.[1]?.replace('h', ':') || '',
+    procedimento: procedimento || ''
+  };
+}
+
 // Rota do webhook da Z-API
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
@@ -247,6 +278,7 @@ app.post('/zapi-webhook', async (req, res) => {
       } else {
         console.log("🧠 Parâmetros extraídos com sucesso (com fallback se necessário).");
       }
+      console.log("📊 Parâmetros extraídos:", { nome, data, hora, procedimento });
 
       if (nome && data && hora && procedimento) {
         await logToAgendamentosSheet({
