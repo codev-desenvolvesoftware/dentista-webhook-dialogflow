@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 const axios = require('axios');
 require('dotenv').config();
 const { JWT } = require('google-auth-library');
+const fs = require('fs');
 
 const {
   ZAPI_INSTANCE_ID,
