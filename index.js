@@ -258,14 +258,14 @@ app.post('/zapi-webhook', async (req, res) => {
 
     // 🔍 Verificação de convênio
     if (intent === 'ConvenioAtendido') {
-      const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
+      const convenioInformado = parameters?.convenio_aceito?.toLowerCase()?.trim();
 
       const normalize = (text) =>
         text.toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim();
 
       const normalizado = normalize(convenioInformado);
       const convenioEncontrado = conveniosAceitos.find(c => normalizado.includes(normalize(c)));
@@ -279,11 +279,11 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const respostaFinal = atende
         ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\n\n` +
-          `Vamos agendar uma consulta? 🦷\n` +
-          `_Digite_: *Consulta* ou _Não_`
+        `Vamos agendar uma consulta? 🦷\n` +
+        `_Digite_: *Consulta* ou _Não_`
         : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉 \n\n` +
-          `Vamos agendar uma avaliação gratuita? 🦷\n` +
-          `_Digite_: *Avaliação* ou _Não_`;
+        `Vamos agendar uma avaliação gratuita? 🦷\n` +
+        `_Digite_: *Avaliação* ou _Não_`;
 
       await logToSheet({
         phone: cleanPhone,
