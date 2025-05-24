@@ -335,7 +335,7 @@ app.post('/zapi-webhook', async (req, res) => {
       let nomeFormatado = capitalizarNome(nomeCompleto);
 
       let procedimentoArray = parameters?.procedimento || [];
-      let procedimento = procedimentoArray.join(' ');
+      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
 
       let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
       let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
@@ -386,7 +386,7 @@ app.post('/zapi-webhook', async (req, res) => {
       let nomeFormatado = capitalizarNome(nomeCompleto);
 
       let procedimentoArray = parameters?.procedimento || [];
-      let procedimento = procedimentoArray.join(' ');
+      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
 
       let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
       let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
