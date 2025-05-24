@@ -355,7 +355,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }
 
       const nomeFormatado = capitalizeFirstLetter(nome);
-      const horaFormatada = formatISOTimeToHHMM(hora);
+      const horaFormatada = formatarDataHora(hora, 'hora');
       const respostaFinal = `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${horaFormatada}. Te aguardamos 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
