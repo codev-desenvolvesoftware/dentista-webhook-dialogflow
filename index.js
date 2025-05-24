@@ -126,7 +126,7 @@ async function logToSheet({ phone, message, type, intent }) {
 // Registros de agendamentos(avaliação/consulta) no Sheets
 async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, hora, procedimento }) {
   console.log("🧾 Dados a serem salvos:", {
-    nome: nomeFormatado,
+    nome,
     telefone,
     tipoAgendamento,
     data,
@@ -296,49 +296,44 @@ app.post('/zapi-webhook', async (req, res) => {
     };
 
     const handleAgendamento = async (tipoAgendamento) => {
-      const fallback = extractFallbackFields(message);
-
-      const nomeRaw = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
-      const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
-
-      const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
-      //const nomeFormatado = capitalizarNome(nomeFinal);
-
-
-      //retirar:
-      let nomeFormatado = 'Cliente';
       try {
-        console.log('🔍 nomeFormatado:', nomeFormatado); //retirar
-        nomeFormatado = capitalizarNome(nomeFinal);
-      } catch (e) {
-        console.error('❌ Erro ao capitalizar nome:', e);
+        const fallback = extractFallbackFields(message);
+
+        const nomeRaw = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
+        const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
+        const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+        const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+
+        const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
+        const nomeFormatado = capitalizarNome(nomeFinal);
+        console.log('🔍 nomeFormatado:', nomeFormatado);
+
+        const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
+        let data = formatarDataHora(dataRaw || fallback.data, 'data');
+        let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
+
+        const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
+        if (hora !== horaExtraidaTexto && horaExtraidaTexto) {
+          console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
+          hora = horaExtraidaTexto;
+        }
+
+        const respostaFinal =
+          `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
+
+        await sendZapiMessage(respostaFinal);
+        await logToAgendamentosSheet({
+          nome: nomeFormatado,
+          telefone: cleanPhone,
+          tipoAgendamento,
+          data,
+          hora,
+          procedimento
+        });
+
+      } catch (error) {
+        console.error('❌ Erro ao processar mensagem:', error);
       }
-
-      const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
-      let data = formatarDataHora(dataRaw || fallback.data, 'data');
-      let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
-
-      const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
-      if (hora !== horaExtraidaTexto) {
-        console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
-        hora = horaExtraidaTexto;
-      }
-
-      console.log('🔍 nomeFormatado:', nomeFormatado); //retirar
-      const respostaFinal =
-        `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
-
-      await sendZapiMessage(respostaFinal);
-      await logToAgendamentosSheet({
-        nome: nomeFormatado,
-        telefone: cleanPhone,
-        tipoAgendamento,
-        data,
-        hora,
-        procedimento
-      });
     };
 
     if (intent === 'AgendarAvaliacaoFinal') {
