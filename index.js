@@ -167,7 +167,7 @@ async function notifyTelegram(phone, message) {
 }
 
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
-async function extractFallbackFields(message) {
+function extractFallbackFields(message) {
   if (!message) return { nome: '', data: '', hora: '', procedimento: '' };
 
   // Normaliza
@@ -198,7 +198,7 @@ async function extractFallbackFields(message) {
 }
 
 // Formata data e hora
-async function formatarDataHora(isoString, tipo) {
+function formatarDataHora(isoString, tipo) {
   if (!isoString) return '';
 
   const dataObj = new Date(isoString);
