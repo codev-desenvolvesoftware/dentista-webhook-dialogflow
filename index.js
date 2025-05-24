@@ -202,15 +202,34 @@ function formatarDataHora(isoString, tipo) {
   if (!isoString) return '';
 
   const dataObj = new Date(isoString);
+  const opcoesComFuso = { timeZone: 'America/Sao_Paulo' };
+
   if (tipo === 'data') {
-    return dataObj.toLocaleDateString('pt-BR'); // ex: 24/05/2025
+    return dataObj.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      ...opcoesComFuso
+    }); // ex: 24/05/2025
   }
+
   if (tipo === 'hora') {
-    return dataObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); // ex: 13:00
+    return dataObj.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      ...opcoesComFuso
+    }); // ex: 13:00
   }
+
   return '';
 }
 
+// Função para capitalizar a primeira letra de uma string
+function capitalizeFirstLetter(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
 let conveniosAceitos = []; // Agora é mutável
@@ -335,7 +354,9 @@ app.post('/zapi-webhook', async (req, res) => {
         hora = hora || fallback.hora;
       }
 
-      const respostaFinal = `Perfeito, ${nome}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${hora}. Te aguardamos 🩵`;
+      const nomeFormatado = capitalizeFirstLetter(nome);
+      const horaFormatada = formatISOTimeToHHMM(hora);
+      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${horaFormatada}. Te aguardamos 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
