@@ -125,6 +125,14 @@ async function logToSheet({ phone, message, type, intent }) {
 
 // Registros de agendamentos(avaliação/consulta) no Sheets
 async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, hora, procedimento }) {
+  console.log("🧾 Dados a serem salvos:", {
+    nome: nomeFormatado,
+    telefone,
+    tipoAgendamento,
+    data,
+    hora,
+    procedimento
+  });
   try {
     const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
     const sheetName = 'Agendamentos';
@@ -294,9 +302,20 @@ app.post('/zapi-webhook', async (req, res) => {
       let hora = formatarDataHora(horaRaw, 'hora');
       let nomeFormatado = capitalizarNome(nomeCompleto);
 
+      const horaEsperada = extractFallbackFields(message).hora; // extraída do texto
+      const horaFallback = formatarDataHora(horaEsperada, 'hora');
+
+      // Se o horário vindo do Dialogflow for diferente do do texto original por mais de 3h, usa o fallback
+      if (hora !== horaFallback) {
+        console.log('⚠️ Corrigindo horário com base no fallback:', horaFallback);
+        hora = horaFallback;
+      }
+
+      // Se não conseguir extrair os campos do Dialogflow, tenta extrair do texto original
       if (!nomeCompleto || !data || !hora || !procedimento) {
         const fallback = extractFallbackFields(message);
-        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
+        nomeCompleto = nomeCompleto || fallback.nome;
+        nomeFormatado = capitalizarNome(nomeCompleto); // atualiza aqui também
         procedimento = procedimento || fallback.procedimento;
         data = data || formatarDataHora(fallback.data, 'data');
         hora = hora || formatarDataHora(fallback.hora, 'hora');
@@ -306,7 +325,7 @@ app.post('/zapi-webhook', async (req, res) => {
         `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
 
       await sendZapiMessage(respostaFinal);
-      await logToAgendamentosSheet({ nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
+      await logToAgendamentosSheet({ nome: nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
     };
 
     if (intent === 'AgendarAvaliacaoFinal') {
