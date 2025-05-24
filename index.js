@@ -176,7 +176,7 @@ async function notifyTelegram(phone, message) {
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
   const texto = message?.text?.message || '';
-  
+
   const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)+)/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
   const horaRegex = /(\d{1,2})[:hH](\d{2})/;
@@ -304,7 +304,17 @@ app.post('/zapi-webhook', async (req, res) => {
       const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
       const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
-      const nomeFormatado = capitalizarNome(nomeFinal);
+      //const nomeFormatado = capitalizarNome(nomeFinal);
+
+
+      //retirar:
+      let nomeFormatado = 'Cliente';
+      try {
+        console.log('🔍 nomeFormatado:', nomeFormatado); //retirar
+        nomeFormatado = capitalizarNome(nomeFinal);
+      } catch (e) {
+        console.error('❌ Erro ao capitalizar nome:', e);
+      }
 
       const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
       let data = formatarDataHora(dataRaw || fallback.data, 'data');
@@ -316,6 +326,7 @@ app.post('/zapi-webhook', async (req, res) => {
         hora = horaExtraidaTexto;
       }
 
+      console.log('🔍 nomeFormatado:', nomeFormatado); //retirar
       const respostaFinal =
         `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
 
