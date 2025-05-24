@@ -333,20 +333,18 @@ app.post('/zapi-webhook', async (req, res) => {
     // === INTENT: AgendarAvaliacaoFinal ===
     if (intent === 'AgendarAvaliacaoFinal') {
       const tipoAgendamento = 'avaliação';
+      let nomeArray = parameters?.nome || [];
+      let nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
+      let nomeFormatado = capitalizarNome(nomeCompleto);
 
-      // Garantir strings únicas mesmo se vierem como arrays
-      const nomeArray = parameters?.nome || [];
-      const nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
-      const nomeFormatado = capitalizarNome(nomeCompleto);
+      let procedimentoArray = parameters?.procedimento || [];
+      let procedimento = procedimentoArray.join(' ');
 
-      const procedimentoArray = parameters?.procedimento || [];
-      const procedimento = procedimentoArray[0] || '';
+      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
-      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
-
-      const data = formatarDataHora(dataRaw, 'data');
-      const hora = formatarDataHora(horaRaw, 'hora');
+      let data = formatarDataHora(dataRaw, 'data');
+      let hora = formatarDataHora(horaRaw, 'hora');
 
       // Fallbacks (se necessário)
       if (!nomeCompleto || !data || !hora || !procedimento) {
@@ -384,20 +382,18 @@ app.post('/zapi-webhook', async (req, res) => {
     // === INTENT: AgendarConsultaFinal ===
     if (intent === 'AgendarConsultaFinal') {
       const tipoAgendamento = 'consulta';
-      // Garantir strings únicas mesmo se vierem como arrays
-      const nomeArray = parameters?.nome || [];
-      const nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
-      const nomeFormatado = capitalizarNome(nomeCompleto);
+      let nomeArray = parameters?.nome || [];
+      let nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
+      let nomeFormatado = capitalizarNome(nomeCompleto);
 
-      const procedimentoArray = parameters?.procedimento || [];
-      const procedimento = procedimentoArray[0] || '';
+      let procedimentoArray = parameters?.procedimento || [];
+      let procedimento = procedimentoArray.join(' ');
 
-      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
-      const data = formatarDataHora(dataRaw, 'data');
-      const hora = formatarDataHora(horaRaw, 'hora');
-
+      let data = formatarDataHora(dataRaw, 'data');
+      let hora = formatarDataHora(horaRaw, 'hora');
       // Fallbacks (se necessário)
       if (!nomeCompleto || !data || !hora || !procedimento) {
         const fallback = extractFallbackFields(message);
