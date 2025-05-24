@@ -256,76 +256,46 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("📦 Parâmetros recebidos:", parameters);
     console.log("✅ conveniosAceitos:", conveniosAceitos);
 
-
-    if (!reply) return res.status(400).send("Resposta inválida do Dialogflow");
-    if (!cleanPhone.match(/^55\d{10,11}$/)) return res.status(400).send("Telefone inválido");
-
-    // Verificação específica para convênio informado
-    // Verificação do convênio com busca reversa + normalização com regex (remover acentos e caracteres especiais, e garantir similaridades entre os termos)
-    function normalize(text) {
-      return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, ' ').trim();
-    }
-
+    // 🔍 Verificação de convênio
     if (intent === 'ConvenioAtendido') {
-      if (intent === 'ConvenioAtendido') {
-        const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
-        const normalizado = normalize(convenioInformado);
-        const convenioEncontrado = conveniosAceitos.find(c => normalizado.includes(normalize(c)));
+      const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
 
-        const atende = Boolean(convenioEncontrado);
-        const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+      const normalize = (text) =>
+        text.toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
 
-        if (atende) {
-          console.log("✅ Convênio reconhecido:", convenioEncontrado);
-        } else {
-          console.log("❌ Convênio não reconhecido:", convenioInformado);
-        }
+      const normalizado = normalize(convenioInformado);
+      const convenioEncontrado = conveniosAceitos.find(c => normalizado.includes(normalize(c)));
 
-        const respostaFinal = atende
-          ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\n\n` +
+      const atende = Boolean(convenioEncontrado);
+      const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+
+      console.log(atende
+        ? `✅ Convênio reconhecido: ${convenioEncontrado}`
+        : `❌ Convênio não reconhecido: ${convenioInformado}`);
+
+      const respostaFinal = atende
+        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\n\n` +
           `Vamos agendar uma consulta? 🦷\n` +
           `_Digite_: *Consulta* ou _Não_`
-          : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉 \n\n` +
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉 \n\n` +
           `Vamos agendar uma avaliação gratuita? 🦷\n` +
           `_Digite_: *Avaliação* ou _Não_`;
 
-        // Log da resposta no Google Sheets
-        await logToSheet({
-          phone: cleanPhone,
-          message: convenioInformado,
-          type: 'bot',
-          intent: novaIntent
-        });
-
-        // Envio da resposta ao WhatsApp via Z-API
-        const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
-        await axios.post(zapiUrl, {
-          phone: cleanPhone,
-          message: respostaFinal
-        }, {
-          headers: {
-            'Client-Token': ZAPI_CLIENT_TOKEN,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        return res.status(200).send("OK");
-      }
-
-
-      // Mensagens de atendimento do atendete registradas no Sheets, quando é trasferido para humano
-      if (!reply) {
-        console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
-        await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
-        return res.status(200).send("Mensagem humana registrada.");
-      }
-
-      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
+      await logToSheet({
+        phone: cleanPhone,
+        message: convenioInformado,
+        type: 'bot',
+        intent: novaIntent
+      });
 
       const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
       await axios.post(zapiUrl, {
         phone: cleanPhone,
-        message: reply
+        message: respostaFinal
       }, {
         headers: {
           'Client-Token': ZAPI_CLIENT_TOKEN,
@@ -333,50 +303,72 @@ app.post('/zapi-webhook', async (req, res) => {
         }
       });
 
-      if (intent === 'FalarComAtendente') {
-        await notifyTelegram(cleanPhone, message);
-        await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
-      }
-
-      if (intent === 'AgendarAvaliacao') {
-        const nome = parameters.fields?.nome?.stringValue || '';
-        const data = parameters.fields?.data?.stringValue || '';
-        const hora = parameters.fields?.hora?.stringValue || '';
-        const procedimento = parameters.fields?.procedimento?.stringValue || '';
-        const tipoAgendamento = 'avaliação';
-
-        if (!nome || !data || !hora || !procedimento) {
-          console.warn("⚠️ Ainda com parâmetros ausentes mesmo após fallback:", { nome, data, hora, procedimento });
-          const fallback = extractFallbackFields(message);
-          nome = nome || fallback.nome;
-          data = data || fallback.data;
-          hora = hora || fallback.hora;
-          procedimento = procedimento || fallback.procedimento;
-        } else {
-          console.log("🧠 Parâmetros extraídos com sucesso (com fallback se necessário).");
-        }
-        console.log("📊 Parâmetros extraídos:", { nome, data, hora, procedimento });
-
-        if (nome && data && hora && procedimento) {
-          await logToAgendamentosSheet({
-            nome,
-            telefone: cleanPhone,
-            tipoAgendamento,
-            data,
-            hora,
-            procedimento
-          });
-        } else {
-          console.warn("⚠️ Parâmetros ausentes no agendamento:", { nome, data, hora, procedimento });
-        }
-      }
-
-      res.status(200).send("OK");
-    } catch (err) {
-      console.error("❌ Erro ao processar mensagem:", err.message);
-      res.status(500).send("Erro ao processar");
+      return res.status(200).send("OK");
     }
-  });
+
+    // Atendimento humano (sem resposta)
+    if (!reply) {
+      console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
+      await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
+      return res.status(200).send("Mensagem humana registrada.");
+    }
+
+    await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
+
+    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`;
+    await axios.post(zapiUrl, {
+      phone: cleanPhone,
+      message: reply
+    }, {
+      headers: {
+        'Client-Token': ZAPI_CLIENT_TOKEN,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (intent === 'FalarComAtendente') {
+      await notifyTelegram(cleanPhone, message);
+      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
+    }
+
+    if (intent === 'AgendarAvaliacao') {
+      let nome = parameters.fields?.nome?.stringValue || '';
+      let data = parameters.fields?.data?.stringValue || '';
+      let hora = parameters.fields?.hora?.stringValue || '';
+      let procedimento = parameters.fields?.procedimento?.stringValue || '';
+      const tipoAgendamento = 'avaliação';
+
+      if (!nome || !data || !hora || !procedimento) {
+        console.warn("⚠️ Parâmetros ausentes mesmo após fallback:", { nome, data, hora, procedimento });
+        const fallback = extractFallbackFields(message);
+        nome = nome || fallback.nome;
+        data = data || fallback.data;
+        hora = hora || fallback.hora;
+        procedimento = procedimento || fallback.procedimento;
+      }
+
+      console.log("📊 Parâmetros extraídos:", { nome, data, hora, procedimento });
+
+      if (nome && data && hora && procedimento) {
+        await logToAgendamentosSheet({
+          nome,
+          telefone: cleanPhone,
+          tipoAgendamento,
+          data,
+          hora,
+          procedimento
+        });
+      } else {
+        console.warn("⚠️ Ainda faltam parâmetros para agendamento:", { nome, data, hora, procedimento });
+      }
+    }
+
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("❌ Erro ao processar mensagem:", err.message);
+    res.status(500).send("Erro ao processar");
+  }
+});
 
 
 // Rota para capturar as mensagens enviadas do atendente para o cliente
