@@ -167,34 +167,30 @@ async function notifyTelegram(phone, message) {
 
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
-  if (!message) return { nome: '', data: '', hora: '', procedimento: '' };
+  const nomeRegex = /^[a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)+/;
+  const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
+  const horaRegex = /(\d{1,2})[:h](\d{2})/;
 
-  // Normaliza
-  const msg = message.toLowerCase();
+  const nomeMatch = message.match(nomeRegex);
+  const dataMatch = message.match(dataRegex);
+  const horaMatch = message.match(horaRegex);
 
-  // Nome: assume que aparece no início ou antes da data
-  const nomeMatch = msg.match(/^(.+?)(?=\s+\d{1,2}\/\d{1,2})/i);
+  const nome = nomeMatch ? nomeMatch[0].trim() : '';
+  const data = dataMatch
+    ? `2025-${dataMatch[2].padStart(2, '0')}-${dataMatch[1].padStart(2, '0')}T00:00:00-03:00`
+    : '';
+  const hora = horaMatch
+    ? `2025-05-24T${horaMatch[1].padStart(2, '0')}:${horaMatch[2]}:00-03:00`
+    : '';
 
-  // Data: dd/mm ou dd/mm/yyyy
-  const dataMatch = msg.match(/(\d{1,2}\/\d{1,2}(\/\d{2,4})?)/);
-
-  // Hora: 10h, 10:30, 10h30 etc
-  const horaRegex = msg.match(/(\d{1,2}[:h]\d{0,2})/);
-  const horaMatch = horaRegex ? `${horaRegex[1].padStart(2, '0')}:${horaRegex[2]}` : '';
-
-  // Procedimento: assume que vem depois da hora
+  // Procedimento: tudo que vem depois da hora
   let procedimento = '';
-  if (horaMatch?.index !== undefined) {
-    const afterHora = msg.slice(horaMatch.index + horaMatch[0].length).trim();
+  if (horaMatch && horaMatch.index !== undefined) {
+    const afterHora = message.slice(horaMatch.index + horaMatch[0].length).trim();
     procedimento = afterHora;
   }
 
-  return {
-    nome: nomeMatch?.[1]?.trim() || '',
-    data: dataMatch?.[1] || '',
-    hora: horaMatch?.[1]?.replace('h', ':') || '',
-    procedimento: procedimento || ''
-  };
+  return { nome, data, hora, procedimento };
 }
 
 // Formata data e hora
