@@ -197,6 +197,7 @@ function extractFallbackFields(message) {
   };
 }
 
+
 // Lê o arquivo convenios.json e armazena os convênios aceitos
 let conveniosAceitos = []; // Agora é mutável
 
@@ -214,6 +215,13 @@ try {
 } catch (err) {
   console.error("❌ Erro ao ler ou processar o arquivo convenios.json:", err.message);
 }
+
+// Verificação do convênio com busca reversa + normalização com regex (remover acentos e caracteres especiais, e garantir similaridades entre os termos)
+function normalize(text) {
+  return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, ' ').trim();
+}
+const normalizado = normalize(convenioInformado);
+const convenioEncontrado = conveniosAceitos.find(c => normalizado.includes(normalize(c)));
 
 
 // Rota do webhook da Z-API
@@ -263,9 +271,7 @@ app.post('/zapi-webhook', async (req, res) => {
     // Verificação específica para convênio informado
     if (intent === 'ConvenioAtendido') {
       const convenioInformado = parameters.fields?.convenio_aceito?.stringValue?.toLowerCase()?.trim();
-
-      // Verificação do convênio com busca parcial
-      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(c));
+      const convenioEncontrado = conveniosAceitos.includes(convenioInformado);
 
       const atende = Boolean(convenioEncontrado);
       const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';

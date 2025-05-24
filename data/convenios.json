@@ -1,17 +1,17 @@
-{
-  
-  "convenios": [
-    "Amil Dental","Amil", "Amil Odonto", "Plano Amil",
-    "Bradesco Dental","Bradesco", "Bradesco Saúde", "Plano Bradesco",
-    "DentalPar","Dental Par", "Plano DentalPar", "Plano Dental Par",
-    "Sulamérica Odonto","Sulamérica", "SulAmerica", "Sulamérica Dental",
-    "Omint","Omint Odonto", "Plano Omint",
-    "Unimed Odonto","Unimed", "Unimed Dental",
-    "Porto Seguro Odontológico","Porto Seguro", "Porto Seguro Odonto",
-    "Inpao Dental","Inpao", "Inpao Odonto",
-    "Interodonto","Inter Odonto", "Plano Interodonto",
-    "Odontoprev","OdontoPrev", "Odonto Prev",
-    "BB Dental","Banco do Brasil Odonto", "BB Odonto",
-    "UniOdonto","Uniodonto", "Uni Odonto"
+{  
+  "convenios": 
+  [
+    "Amil Dental",
+    "Bradesco Dental",
+    "DentalPar",
+    "Sulamérica Odonto",
+    "Omint","Omint Odonto", 
+    "Unimed Odonto","Unimed", 
+    "Porto Seguro Odontológico",
+    "Inpao Dental","Inpao",
+    "Interodonto",
+    "Odontoprev",
+    "BB Dental",
+    "UniOdonto"
   ]
 }
