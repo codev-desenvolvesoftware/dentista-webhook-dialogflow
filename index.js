@@ -269,15 +269,6 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("🧠 Intent recebida:", intent);
     console.log("📦 Parâmetros recebidos:", parameters);
 
-    // Se não há resposta, assume humano
-    if (!reply) {
-      console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
-      await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
-      return res.status(200).send("Mensagem humana registrada.");
-    }
-
-    await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
-
     // === INTENT: ConvenioAtendido ===
     if (intent === 'ConvenioAtendido') {
       const convenioInformado = parameters?.convenio_aceito?.toLowerCase()?.trim();
@@ -411,18 +402,26 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    // Outras intents: resposta padrão
-    await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-      phone: cleanPhone,
-      message: reply
-    }, {
-      headers: {
-        'Client-Token': ZAPI_CLIENT_TOKEN,
-        'Content-Type': 'application/json'
-      }
-    });
+    // === Outras intents com reply ===
+    if (reply) {
+      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
+        phone: cleanPhone,
+        message: reply
+      }, {
+        headers: {
+          'Client-Token': ZAPI_CLIENT_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    res.status(200).send("OK");
+      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
+      return res.status(200).send("OK");
+    }
+
+    // === Sem resposta e não tratada: assume humano ===
+    console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
+    await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
+    return res.status(200).send("Mensagem humana registrada.");
 
   } catch (err) {
     console.error("❌ Erro ao processar mensagem:", err.message);
