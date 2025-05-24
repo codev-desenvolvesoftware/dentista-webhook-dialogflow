@@ -293,38 +293,48 @@ app.post('/zapi-webhook', async (req, res) => {
     };
 
     const handleAgendamento = async (tipoAgendamento) => {
+      const fallback = extractFallbackFields(message);
+
+      // Normaliza parâmetros
       let nomeCompleto = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
       let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
       let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
       let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
+      // Fallbacks caso algum campo esteja ausente
+      nomeCompleto = nomeCompleto || fallback.nome;
+      procedimento = procedimento || fallback.procedimento;
+      dataRaw = dataRaw || fallback.data;
+      horaRaw = horaRaw || fallback.hora;
+
+      const nomeFormatado = capitalizarNome(nomeCompleto || 'Cliente');
       let data = formatarDataHora(dataRaw, 'data');
       let hora = formatarDataHora(horaRaw, 'hora');
-      let nomeFormatado = capitalizarNome(nomeCompleto);
+      const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
 
-      const horaEsperada = extractFallbackFields(message).hora; // extraída do texto
-      const horaFallback = formatarDataHora(horaEsperada, 'hora');
-
-      // Se o horário vindo do Dialogflow for diferente do do texto original por mais de 3h, usa o fallback
-      if (hora !== horaFallback) {
-        console.log('⚠️ Corrigindo horário com base no fallback:', horaFallback);
-        hora = horaFallback;
-      }
-
-      // Se não conseguir extrair os campos do Dialogflow, tenta extrair do texto original
-      if (!nomeCompleto || !data || !hora || !procedimento) {
-        const fallback = extractFallbackFields(message);
-        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
-        procedimento = procedimento || fallback.procedimento;
-        data = data || formatarDataHora(fallback.data, 'data');
-        hora = hora || formatarDataHora(fallback.hora, 'hora');
+      // Corrige horário se houver diferença perceptível
+      if (hora !== horaExtraidaTexto) {
+        console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
+        hora = horaExtraidaTexto;
       }
 
       const respostaFinal =
         `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
 
       await sendZapiMessage(respostaFinal);
-      await logToAgendamentosSheet({ nome: nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
+      await logToAgendamentosSheet({
+        nome: nomeFormatado,
+        telefone: cleanPhone,
+        tipoAgendamento,
+        data,
+        hora,
+        procedimento
+      });
+      console.log("✅ Agendamento confirmado:", {
+        nome: nomeFormatado,
+        data: params.data,
+        hora: params.hora
+      });
     };
 
     if (intent === 'AgendarAvaliacaoFinal') {
