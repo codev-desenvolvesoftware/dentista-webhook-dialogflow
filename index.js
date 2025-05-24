@@ -295,20 +295,24 @@ app.post('/zapi-webhook', async (req, res) => {
     const handleAgendamento = async (tipoAgendamento) => {
       const fallback = extractFallbackFields(message);
 
-      const nomeRaw = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
-      const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+      // Normaliza parâmetros
+      let nomeCompleto = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
+      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
+      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
-      const nome = nomeRaw || fallback.nome || 'Cliente';
-      const nomeFormatado = capitalizarNome(nome);
+      // Fallbacks caso algum campo esteja ausente
+      nomeCompleto = nomeCompleto || fallback.nome;
+      procedimento = procedimento || fallback.procedimento;
+      dataRaw = dataRaw || fallback.data;
+      horaRaw = horaRaw || fallback.hora;
 
-      const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
-      let data = formatarDataHora(dataRaw || fallback.data, 'data');
-      let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
+      let nomeFormatado = capitalizarNome(nomeCompleto || 'Cliente');
+      let data = formatarDataHora(dataRaw, 'data');
+      let hora = formatarDataHora(horaRaw, 'hora');
       const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
 
-      // Se o horário vindo do Dialogflow for diferente do do texto original por mais de 3h, usa o fallback
+      // Corrige horário se houver diferença perceptível
       if (hora !== horaExtraidaTexto) {
         console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
         hora = horaExtraidaTexto;
@@ -325,11 +329,6 @@ app.post('/zapi-webhook', async (req, res) => {
         data,
         hora,
         procedimento
-      });
-      console.log("✅ Agendamento confirmado:", {
-        nome: nomeFormatado,
-        data: params.data,
-        hora: params.hora
       });
     };
 
