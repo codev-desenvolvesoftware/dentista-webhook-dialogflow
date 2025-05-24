@@ -244,16 +244,12 @@ try {
 // Rota do webhook da Z-API
 app.post('/zapi-webhook', async (req, res) => {
   console.log('📥 Mensagem recebida da Z-API:', req.body);
-
   if (
     req.body.isNewsletter ||
     String(req.body.phone).includes('@newsletter') ||
     req.body.isGroup ||
     req.body.type !== 'ReceivedCallback'
-  ) {
-    console.log("🚫 Mensagem ignorada (newsletter, grupo ou tipo não suportado).");
-    return res.status(200).send("Ignorado");
-  }
+  ) return res.status(200).send("Ignorado");
 
   const from = req.body.phone;
   const message = req.body.text?.message || '';
@@ -265,12 +261,11 @@ app.post('/zapi-webhook', async (req, res) => {
   try {
     if (!accessToken || Date.now() >= tokenExpiry) await getDialogflowAccessToken();
 
-    const dialogflowUrl = `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`;
-    const dialogflowResponse = await axios.post(dialogflowUrl, {
-      queryInput: { text: { text: message, languageCode: 'pt-BR' } }
-    }, {
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }
-    });
+    const dialogflowResponse = await axios.post(
+      `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
+      { queryInput: { text: { text: message, languageCode: 'pt-BR' } } },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
 
     const queryResult = dialogflowResponse.data.queryResult;
     const reply = queryResult?.fulfillmentText?.trim();
@@ -280,172 +275,78 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("🧠 Intent recebida:", intent);
     console.log("📦 Parâmetros recebidos:", parameters);
 
-    // === INTENT: ConvenioAtendido ===
-    if (intent === 'ConvenioAtendido') {
-      const convenioInformado = parameters?.convenio_aceito?.toLowerCase()?.trim();
-
-      const normalize = (text) =>
-        text.toLowerCase()
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]+/g, ' ')
-          .trim();
-
-      const normalizado = normalize(convenioInformado);
-      const convenioEncontrado = conveniosAceitos.find(c => normalizado.includes(normalize(c)));
-
-      const atende = Boolean(convenioEncontrado);
-      const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
-
-      const respostaFinal = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\n\nVamos agendar uma consulta? 🦷\n_Digite_: *Consulta* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉\n\nVamos agendar uma avaliação gratuita? 🦷\n_Digite_: *Avaliação* ou _Não_`;
-
-      await logToSheet({
+    const sendZapiMessage = async (text) => {
+      return axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
-        message: convenioInformado,
-        type: 'bot',
-        intent: novaIntent
-      });
-
-      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-        phone: cleanPhone,
-        message: respostaFinal
+        message: text
       }, {
-        headers: {
-          'Client-Token': ZAPI_CLIENT_TOKEN,
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Client-Token': ZAPI_CLIENT_TOKEN }
       });
+    };
 
+    const handleAgendamento = async (tipoAgendamento) => {
+      let nomeCompleto = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
+      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
+      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+
+      let data = formatarDataHora(dataRaw, 'data');
+      let hora = formatarDataHora(horaRaw, 'hora');
+      let nomeFormatado = capitalizarNome(nomeCompleto);
+
+      if (!nomeCompleto || !data || !hora || !procedimento) {
+        const fallback = extractFallbackFields(message);
+        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
+        procedimento = procedimento || fallback.procedimento;
+        data = data || formatarDataHora(fallback.data, 'data');
+        hora = hora || formatarDataHora(fallback.hora, 'hora');
+      }
+
+      const respostaFinal =
+        `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
+
+      await sendZapiMessage(respostaFinal);
+      await logToAgendamentosSheet({ nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
+    };
+
+    if (intent === 'AgendarAvaliacaoFinal') {
+      await handleAgendamento('avaliação');
       return res.status(200).send("OK");
     }
 
-    // === INTENT: FalarComAtendente ===
+    if (intent === 'AgendarConsultaFinal') {
+      await handleAgendamento('consulta');
+      return res.status(200).send("OK");
+    }
+
+    if (intent === 'ConvenioAtendido') {
+      const normalize = (text) =>
+        text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
+      const convenioInformado = normalize(parameters?.convenio_aceito || '');
+      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
+      const atende = Boolean(convenioEncontrado);
+
+      const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+      const respostaFinal = atende
+        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Consulta* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉\nVamos agendar uma avaliação gratuita? 🦷\n_Digite_: *Avaliação* ou _Não_`;
+
+      await logToSheet({ phone: cleanPhone, message: convenioInformado, type: 'bot', intent: novaIntent });
+      await sendZapiMessage(respostaFinal);
+      return res.status(200).send("OK");
+    }
+
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
       await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
     }
 
-    // === INTENT: AgendarAvaliacaoFinal ===
-    if (intent === 'AgendarAvaliacaoFinal') {
-      const tipoAgendamento = 'avaliação';
-      let nomeArray = parameters?.nome || [];
-      let nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
-      let nomeFormatado = capitalizarNome(nomeCompleto);
-
-      let procedimentoArray = parameters?.procedimento || [];
-      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-
-      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
-
-      let data = formatarDataHora(dataRaw, 'data');
-      let hora = formatarDataHora(horaRaw, 'hora');
-
-      // Fallbacks (se necessário)
-      if (!nomeCompleto || !data || !hora || !procedimento) {
-        const fallback = extractFallbackFields(message);
-        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
-        procedimento = procedimento || fallback.procedimento;
-        data = data || formatarDataHora(fallback.data, 'data');
-        hora = hora || formatarDataHora(fallback.hora, 'hora');
-      }
-
-      const respostaFinal = 
-      `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${hora}.` +        
-      `\nTe aguardamos 🩵`;
-
-      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-        phone: cleanPhone,
-        message: respostaFinal
-      }, {
-        headers: {
-          'Client-Token': ZAPI_CLIENT_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      await logToAgendamentosSheet({
-        nomeFormatado,
-        telefone: cleanPhone,
-        tipoAgendamento,
-        data,
-        hora,
-        procedimento
-      });
-
-      return res.status(200).send("OK");
-    }
-
-    // === INTENT: AgendarConsultaFinal ===
-    if (intent === 'AgendarConsultaFinal') {
-      const tipoAgendamento = 'consulta';
-      let nomeArray = parameters?.nome || [];
-      let nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
-      let nomeFormatado = capitalizarNome(nomeCompleto);
-
-      let procedimentoArray = parameters?.procedimento || [];
-      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-
-      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
-
-      let data = formatarDataHora(dataRaw, 'data');
-      let hora = formatarDataHora(horaRaw, 'hora');
-      // Fallbacks (se necessário)
-      if (!nomeCompleto || !data || !hora || !procedimento) {
-        const fallback = extractFallbackFields(message);
-        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
-        procedimento = procedimento || fallback.procedimento;
-        data = data || formatarDataHora(fallback.data, 'data');
-        hora = hora || formatarDataHora(fallback.hora, 'hora');
-      }
-
-      const respostaFinal = 
-      `Perfeito, ${nomeFormatado}! Sua consulta para ${procedimento} foi agendada para o dia ${data} às ${hora}.` +
-      `\nAté lá 🩵`;
-
-      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-        phone: cleanPhone,
-        message: respostaFinal
-      }, {
-        headers: {
-          'Client-Token': ZAPI_CLIENT_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      await logToAgendamentosSheet({
-        nomeFormatado,
-        telefone: cleanPhone,
-        tipoAgendamento,
-        data,
-        hora,
-        procedimento
-      });
-
-      return res.status(200).send("OK");
-    }
-
-    // === Outras intents com reply ===
     if (reply) {
-      await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
-        phone: cleanPhone,
-        message: reply
-      }, {
-        headers: {
-          'Client-Token': ZAPI_CLIENT_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      });
-
+      await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
     }
 
-    // === Sem resposta e não tratada: assume humano ===
-    console.log("📌 Sem resposta do Dialogflow — pode ser atendimento humano.");
     await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
     return res.status(200).send("Mensagem humana registrada.");
 
