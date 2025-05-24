@@ -175,15 +175,17 @@ async function notifyTelegram(phone, message) {
 
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
-  const nomeRegex = /^[a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)+/;
+  const texto = message?.text?.message || '';
+  
+  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)+)/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /(\d{1,2})[:h](\d{2})/;
+  const horaRegex = /(\d{1,2})[:hH](\d{2})/;
 
-  const nomeMatch = message.match(nomeRegex);
-  const dataMatch = message.match(dataRegex);
-  const horaMatch = message.match(horaRegex);
+  const nomeMatch = texto.match(nomeRegex);
+  const dataMatch = texto.match(dataRegex);
+  const horaMatch = texto.match(horaRegex);
 
-  const nome = nomeMatch ? nomeMatch[0].trim() : '';
+  const nome = nomeMatch ? nomeMatch[1].trim() : '';
   const data = dataMatch
     ? `2025-${dataMatch[2].padStart(2, '0')}-${dataMatch[1].padStart(2, '0')}T00:00:00-03:00`
     : '';
@@ -194,12 +196,13 @@ function extractFallbackFields(message) {
   // Procedimento: tudo que vem depois da hora
   let procedimento = '';
   if (horaMatch && horaMatch.index !== undefined) {
-    const afterHora = message.slice(horaMatch.index + horaMatch[0].length).trim();
-    procedimento = afterHora;
+    const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
+    procedimento = afterHora.split(' ').slice(0, 4).join(' '); // evita frases longas
   }
 
   return { nome, data, hora, procedimento };
 }
+
 
 // Formata data e hora
 function formatarDataHora(isoString, tipo) {
@@ -295,24 +298,19 @@ app.post('/zapi-webhook', async (req, res) => {
     const handleAgendamento = async (tipoAgendamento) => {
       const fallback = extractFallbackFields(message);
 
-      // Normaliza parâmetros
-      let nomeCompleto = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
-      let procedimento = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-      let dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-      let horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+      const nomeRaw = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
+      const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
+      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
-      // Fallbacks caso algum campo esteja ausente
-      nomeCompleto = nomeCompleto || fallback.nome;
-      procedimento = procedimento || fallback.procedimento;
-      dataRaw = dataRaw || fallback.data;
-      horaRaw = horaRaw || fallback.hora;
+      const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
+      const nomeFormatado = capitalizarNome(nomeFinal);
 
-      let nomeFormatado = capitalizarNome(nomeCompleto || 'Cliente');
-      let data = formatarDataHora(dataRaw, 'data');
-      let hora = formatarDataHora(horaRaw, 'hora');
+      const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
+      let data = formatarDataHora(dataRaw || fallback.data, 'data');
+      let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
+
       const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
-
-      // Corrige horário se houver diferença perceptível
       if (hora !== horaExtraidaTexto) {
         console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
         hora = horaExtraidaTexto;
