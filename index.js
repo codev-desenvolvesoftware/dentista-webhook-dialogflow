@@ -199,31 +199,24 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(isoString, tipo) {
-  if (!isoString) return '';
+  if (!isoString || typeof isoString !== 'string') return '';
 
   const dataObj = new Date(isoString);
-  const opcoesComFuso = { timeZone: 'America/Sao_Paulo' };
+  if (isNaN(dataObj.getTime())) return 'Data inválida';
 
   if (tipo === 'data') {
-    return dataObj.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      ...opcoesComFuso
-    }); // ex: 24/05/2025
+    return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   }
-
   if (tipo === 'hora') {
     return dataObj.toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      ...opcoesComFuso
-    }); // ex: 13:00
+      minute: '2-digit'
+    });
   }
-
   return '';
 }
+
 
 // Função para capitalizar a primeira letra de uma string
 function capitalizeFirstLetter(str) {
@@ -399,7 +392,9 @@ app.post('/zapi-webhook', async (req, res) => {
         hora = hora || fallback.hora;
       }
 
-      const respostaFinal = `Perfeito, ${nome}! Sua consulta de ${procedimento} foi agendada para o dia ${data} às ${hora}. Até lá 🩵`;
+      const nomeFormatado = capitalizeFirstLetter(nome);
+      const horaFormatada = formatarDataHora(hora, 'hora');
+      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua consulta de ${procedimento} foi agendada para o dia ${data} às ${horaFormatada}. Até lá 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
