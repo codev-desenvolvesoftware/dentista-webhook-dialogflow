@@ -179,7 +179,8 @@ function extractFallbackFields(message) {
   const dataMatch = msg.match(/(\d{1,2}\/\d{1,2}(\/\d{2,4})?)/);
 
   // Hora: 10h, 10:30, 10h30 etc
-  const horaMatch = msg.match(/(\d{1,2}[:h]\d{0,2})/);
+  const horaRegex = msg.match(/(\d{1,2}[:h]\d{0,2})/);
+  const horaMatch = horaRegex ? `${horaRegex[1].padStart(2, '0')}:${horaRegex[2]}` : '';
 
   // Procedimento: assume que vem depois da hora
   let procedimento = '';
@@ -355,7 +356,9 @@ app.post('/zapi-webhook', async (req, res) => {
         hora = hora || formatarDataHora(fallback.hora, 'hora');
       }
 
-      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${hora}. Te aguardamos 🩵`;
+      const respostaFinal = 
+      `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${hora}.` +        
+      `\nTe aguardamos 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
@@ -368,7 +371,7 @@ app.post('/zapi-webhook', async (req, res) => {
       });
 
       await logToAgendamentosSheet({
-        nome,
+        nomeFormatado,
         telefone: cleanPhone,
         tipoAgendamento,
         data,
@@ -403,7 +406,9 @@ app.post('/zapi-webhook', async (req, res) => {
         hora = hora || formatarDataHora(fallback.hora, 'hora');
       }
 
-      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua consulta para ${procedimento} foi agendada para o dia ${data} às ${hora}. Até lá 🩵`;
+      const respostaFinal = 
+      `Perfeito, ${nomeFormatado}! Sua consulta para ${procedimento} foi agendada para o dia ${data} às ${hora}.` +
+      `\nAté lá 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
@@ -416,7 +421,7 @@ app.post('/zapi-webhook', async (req, res) => {
       });
 
       await logToAgendamentosSheet({
-        nome,
+        nomeFormatado,
         telefone: cleanPhone,
         tipoAgendamento,
         data,
