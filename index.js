@@ -102,7 +102,6 @@ async function ensureSheetTabsExist() {
   }
 }
 
-
 // Registros de atendimentos no Sheets
 async function logToSheet({ phone, message, type, intent }) {
   try {
@@ -140,7 +139,7 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
       }
     });
 
-    console.log(`📆 Agendamento registrado com sucesso: ${nome}, ${data} às ${hora}`);
+    console.log(`📆 Agendamento registrado com sucesso: ${nome}, ${data} às ${hora}, ${procedimento}`);
   } catch (err) {
     console.error("❌ Erro ao registrar agendamento no Google Sheets:", err.message);
   }
@@ -218,10 +217,13 @@ function formatarDataHora(isoString, tipo) {
 }
 
 
-// Função para capitalizar a primeira letra de uma string
-function capitalizeFirstLetter(str) {
-  if (!str) return '';
-  return str.charAt(0).toUpperCase() + str.slice(1);
+// Função para capitalizar a primeira letra de cada palavra
+function capitalizarNome(nome) {
+  if (!nome) return '';
+  return nome
+    .split(' ')
+    .map(palavra => palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase())
+    .join(' ');
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
@@ -331,25 +333,31 @@ app.post('/zapi-webhook', async (req, res) => {
     // === INTENT: AgendarAvaliacaoFinal ===
     if (intent === 'AgendarAvaliacaoFinal') {
       const tipoAgendamento = 'avaliação';
-      let nome = parameters?.nome?.[0] || '';
-      let dataRaw = parameters?.data || '';
-      let horaRaw = parameters?.hora || '';
-      let procedimento = parameters?.procedimento?.[0] || '';
 
-      let data = formatarDataHora(dataRaw, 'data');
-      let hora = formatarDataHora(horaRaw, 'hora');
+      // Garantir strings únicas mesmo se vierem como arrays
+      const nomeArray = parameters?.nome || [];
+      const nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
+      const nomeFormatado = capitalizarNome(nomeCompleto);
 
-      if (!nome || !data || !hora || !procedimento) {
+      const procedimentoArray = parameters?.procedimento || [];
+      const procedimento = procedimentoArray[0] || '';
+
+      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+
+      const data = formatarDataHora(dataRaw, 'data');
+      const hora = formatarDataHora(horaRaw, 'hora');
+
+      // Fallbacks (se necessário)
+      if (!nomeCompleto || !data || !hora || !procedimento) {
         const fallback = extractFallbackFields(message);
-        nome = nome || fallback.nome;
+        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
         procedimento = procedimento || fallback.procedimento;
-        data = data || fallback.data;
-        hora = hora || fallback.hora;
+        data = data || formatarDataHora(fallback.data, 'data');
+        hora = hora || formatarDataHora(fallback.hora, 'hora');
       }
 
-      const nomeFormatado = capitalizeFirstLetter(nome);
-      const horaFormatada = formatarDataHora(hora, 'hora');
-      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${horaFormatada}. Te aguardamos 🩵`;
+      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua avaliação de ${procedimento} foi agendada para o dia ${data} às ${hora}. Te aguardamos 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
@@ -376,25 +384,30 @@ app.post('/zapi-webhook', async (req, res) => {
     // === INTENT: AgendarConsultaFinal ===
     if (intent === 'AgendarConsultaFinal') {
       const tipoAgendamento = 'consulta';
-      let nome = parameters?.nome?.[0] || '';
-      let dataRaw = parameters?.data || '';
-      let horaRaw = parameters?.hora || '';
-      let procedimento = parameters?.procedimento?.[0] || '';
+      // Garantir strings únicas mesmo se vierem como arrays
+      const nomeArray = parameters?.nome || [];
+      const nomeCompleto = Array.isArray(nomeArray) ? nomeArray.join(' ') : nomeArray;
+      const nomeFormatado = capitalizarNome(nomeCompleto);
 
-      let data = formatarDataHora(dataRaw, 'data');
-      let hora = formatarDataHora(horaRaw, 'hora');
+      const procedimentoArray = parameters?.procedimento || [];
+      const procedimento = procedimentoArray[0] || '';
 
-      if (!nome || !data || !hora || !procedimento) {
+      const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
+      const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+
+      const data = formatarDataHora(dataRaw, 'data');
+      const hora = formatarDataHora(horaRaw, 'hora');
+
+      // Fallbacks (se necessário)
+      if (!nomeCompleto || !data || !hora || !procedimento) {
         const fallback = extractFallbackFields(message);
-        nome = nome || fallback.nome;
+        nomeFormatado = nomeFormatado || capitalizarNome(fallback.nome);
         procedimento = procedimento || fallback.procedimento;
-        data = data || fallback.data;
-        hora = hora || fallback.hora;
+        data = data || formatarDataHora(fallback.data, 'data');
+        hora = hora || formatarDataHora(fallback.hora, 'hora');
       }
 
-      const nomeFormatado = capitalizeFirstLetter(nome);
-      const horaFormatada = formatarDataHora(hora, 'hora');
-      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua consulta de ${procedimento} foi agendada para o dia ${data} às ${horaFormatada}. Até lá 🩵`;
+      const respostaFinal = `Perfeito, ${nomeFormatado}! Sua consulta para ${procedimento} foi agendada para o dia ${data} às ${hora}. Até lá 🩵`;
 
       await axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
         phone: cleanPhone,
