@@ -222,6 +222,7 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
+      // Aceita 11, 11h, 11:00, 11h30, 11:30
       const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/;
       const match = valor.match(horaRegex);
       if (match) {
