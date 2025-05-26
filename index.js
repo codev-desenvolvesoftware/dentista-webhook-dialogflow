@@ -223,9 +223,14 @@ function formatarDataHora(valor, tipo) {
   console.log(`📥 formatarDataHora | tipo: ${tipo} | valor bruto: "${valor}"`);
 
   try {
-    valor = valor.normalize("NFKD").replace(/[^\x00-\x7F]/g, '').trim();
+    valor = valor
+      .normalize("NFKD")
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')  // Remove caracteres invisíveis específicos
+      .replace(/[^\x20-\x7E]/g, '')           // Remove todos fora do intervalo ASCII imprimível
+      .trim();
 
     console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
+    console.log(`📐 Código ASCII da string hora:`, valor.split('').map(c => c.charCodeAt(0)));
 
     if (tipo === 'hora') {
       const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/; // <- regex corrigida aqui!
