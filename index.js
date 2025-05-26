@@ -346,22 +346,24 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    if (intent === 'ConvenioAtendido') {
+    if (intent === 'VerificarConvenio') {
       const normalize = (text) =>
         text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
+
       const convenioInformado = normalize(parameters?.convenio_aceito || '');
       const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
       const atende = Boolean(convenioEncontrado);
 
       const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
       const respostaFinal = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Consulta* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉\nVamos agendar uma avaliação gratuita? 🦷\n_Digite_: *Avaliação* ou _Não_`;
+        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉\nVamos agendar uma avaliação gratuita? 🦷\n_Digite_: *Sim* ou _Não_`;
 
       await logToSheet({ phone: cleanPhone, message: convenioInformado, type: 'bot', intent: novaIntent });
       await sendZapiMessage(respostaFinal);
       return res.status(200).send("OK");
     }
+
 
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
