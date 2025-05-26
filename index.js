@@ -153,7 +153,6 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
   }
 }
 
-
 // Notifica Telegram
 async function notifyTelegram(phone, message) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -175,15 +174,21 @@ async function notifyTelegram(phone, message) {
 
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
-  const texto = message?.text?.message || '';
+  const texto = message?.text?.message?.toLowerCase() || '';
+
   const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /\b(\d{1,2})[:hH]?(\d{2})?\b/;
+
+  // Suporta "10", "10h", "10 horas", "10:30", "1030", "14h30"
+  const horaRegex = /\b(\d{1,2})(?:[:hH]?(\d{2}))?\s?(?:horas?)?\b/;
+
   const nomeMatch = texto.match(nomeRegex);
   const dataMatch = texto.match(dataRegex);
   const horaMatch = texto.match(horaRegex);
+
   const nome = nomeMatch ? nomeMatch[1].trim() : '';
 
+  // 🗓️ DATA COM ANO AUTOMÁTICO CORRETO
   let data = '';
   if (dataMatch) {
     const dia = parseInt(dataMatch[1]);
@@ -191,23 +196,23 @@ function extractFallbackFields(message) {
     const hoje = new Date();
     let ano = hoje.getFullYear();
 
-    const dataTentativa = new Date(ano, mes - 1, dia);
-    const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-
-    // Se a data informada já passou neste ano, joga para o próximo
-    if (dataTentativa < hojeSemHora) {
+    const tentativa = new Date(ano, mes - 1, dia);
+    if (tentativa < hoje.setHours(0, 0, 0, 0)) {
       ano += 1;
     }
+
     data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
   }
-  
+
+  // ⏰ HORA MAIS FLEXÍVEL
   let hora = '';
   if (horaMatch) {
     const h = horaMatch[1].padStart(2, '0');
     const m = horaMatch[2] ? horaMatch[2].padStart(2, '0') : '00';
-    hora = `${h}:${m}`; // formato padrão para depois formatar como hora
+    hora = `${h}:${m}`; // formato compatível com formatarDataHora()
   }
 
+  // Procedimento: tudo que vem depois da hora
   let procedimento = '';
   if (horaMatch && horaMatch.index !== undefined) {
     const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
@@ -216,7 +221,6 @@ function extractFallbackFields(message) {
 
   return { nome, data, hora, procedimento };
 }
-
 
 // Formata data e hora
 function formatarDataHora(isoString, tipo) {
