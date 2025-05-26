@@ -175,75 +175,72 @@ async function notifyTelegram(phone, message) {
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
   const texto = message?.text?.message?.toLowerCase() || '';
-  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/;
+
+  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,3})/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /\b(\d{1,2})(?:[:hH]?(\d{2}))?\s?(?:horas?)?\b/;
+  const horaRegex = /\b(\d{1,2})(?:[:hH]?(\d{2}))?\b/;
+
   const nomeMatch = texto.match(nomeRegex);
   const dataMatch = texto.match(dataRegex);
   const horaMatch = texto.match(horaRegex);
+
   const nome = nomeMatch ? nomeMatch[1].trim() : '';
 
-  // Correção da DATA
+  // Data
   let data = '';
   if (dataMatch) {
     const dia = parseInt(dataMatch[1]);
     const mes = parseInt(dataMatch[2]);
-
     const hoje = new Date();
-    const dataHojeZerada = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     let ano = hoje.getFullYear();
-
     const tentativa = new Date(ano, mes - 1, dia);
-    if (tentativa < dataHojeZerada) {
-      ano += 1;
-    }
+    if (tentativa < hoje) ano += 1;
     data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
   }
 
-  // Correção da HORA
+  // Hora
   let hora = '';
   if (horaMatch) {
-    const h = String(horaMatch[1]).padStart(2, '0');
-    const m = horaMatch[2] ? String(horaMatch[2]).padStart(2, '0') : '00';
+    const h = horaMatch[1].padStart(2, '0');
+    const m = horaMatch[2] ? horaMatch[2].padStart(2, '0') : '00';
     hora = `${h}:${m}`;
   }
 
-  // Procedimento
+  // Procedimento após a hora
   let procedimento = '';
   if (horaMatch && horaMatch.index !== undefined) {
     const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
     procedimento = afterHora.split(' ').slice(0, 4).join(' ');
   }
+
   return { nome, data, hora, procedimento };
 }
 
-
 // Formata data e hora
-function formatarDataHora(isoString, tipo) {
-  if (!isoString || typeof isoString !== 'string') return '';
+function formatarDataHora(valor, tipo) {
+  if (!valor || typeof valor !== 'string') return '';
+
   try {
     if (tipo === 'hora') {
-      const horaRegex = /^(\d{1,2}):(\d{2})$/;
-      const match = isoString.match(horaRegex);
+      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/;
+      const match = valor.match(horaRegex);
       if (match) {
         const h = match[1].padStart(2, '0');
-        const m = match[2];
+        const m = match[2] ? match[2].padStart(2, '0') : '00';
         return `${h}:${m}`;
-      } else {
-        return 'Data inválida';
       }
+      return 'Hora inválida';
     }
 
-    const dataObj = new Date(isoString);
-    if (isNaN(dataObj.getTime())) return 'Data inválida';
-
     if (tipo === 'data') {
+      const dataObj = new Date(valor);
+      if (isNaN(dataObj.getTime())) return 'Data inválida';
       return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     }
 
     return '';
   } catch (e) {
-    console.error("Erro ao formatar data/hora:", e);
+    console.error("❌ Erro ao formatar data/hora:", e);
     return '';
   }
 }
@@ -336,14 +333,18 @@ app.post('/zapi-webhook', async (req, res) => {
         const nomeFormatado = capitalizarNomeCompleto(nomeFinal);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
-        const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
+        const procedimentoRaw = Array.isArray(parameters?.procedimento)
+          ? parameters.procedimento.join(' ')
+          : parameters?.procedimento;
+
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
 
         let data = formatarDataHora(parameters?.data || fallback.data, 'data');
         let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
 
+        // Verificação e correção via fallback
         const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
-        if (hora !== horaExtraidaTexto && horaExtraidaTexto) {
+        if (hora !== horaExtraidaTexto && horaExtraidaTexto && hora === 'Hora inválida') {
           console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
           hora = horaExtraidaTexto;
         }
