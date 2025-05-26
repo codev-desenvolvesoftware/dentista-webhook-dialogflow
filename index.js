@@ -177,7 +177,7 @@ async function notifyTelegram(phone, message) {
 function extractFallbackFields(message) {
   const texto = message?.text?.message || '';
 
-  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)+)/;
+  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/; //Aceita também nomes únicos (mas dá preferência a dois nomes)
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
   const horaRegex = /(\d{1,2})[:hH](\d{2})/;
 
@@ -315,18 +315,24 @@ app.post('/zapi-webhook', async (req, res) => {
       try {
         const fallback = extractFallbackFields(message);
 
-        const nomeRaw = Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome;
-        const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
-        const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
-        const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
+        let nomeRaw;
+        if (parameters?.nome?.name) {
+          nomeRaw = parameters.nome.name;
+        } else if (Array.isArray(parameters?.nome)) {
+          nomeRaw = parameters.nome.join(' ');
+        } else {
+          nomeRaw = parameters?.nome;
+        }
 
-        const nomeFinal = fallback.nome || nomeRaw || 'Cliente';
+        const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
         const nomeFormatado = capitalizarNomeCompleto(nomeFinal);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
+        const procedimentoRaw = Array.isArray(parameters?.procedimento) ? parameters.procedimento.join(' ') : parameters?.procedimento;
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
-        let data = formatarDataHora(dataRaw || fallback.data, 'data');
-        let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
+
+        let data = formatarDataHora(parameters?.data || fallback.data, 'data');
+        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
 
         const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
         if (hora !== horaExtraidaTexto && horaExtraidaTexto) {
@@ -334,10 +340,8 @@ app.post('/zapi-webhook', async (req, res) => {
           hora = horaExtraidaTexto;
         }
 
-        const respostaFinal =
-          `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} foi agendada para o dia ${data} às ${hora}.\nAté lá 🩵`;
+        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} está agendada para ${data} às ${hora}. Procedimento: ${procedimento}.`;
 
-        await sendZapiMessage(respostaFinal);
         await logToAgendamentosSheet({
           nome: nomeFormatado,
           telefone: cleanPhone,
@@ -347,8 +351,9 @@ app.post('/zapi-webhook', async (req, res) => {
           procedimento
         });
 
-      } catch (error) {
-        console.error('❌ Erro ao processar mensagem:', error);
+        await sendZapiMessage(respostaFinal);
+      } catch (err) {
+        console.error("❌ Erro no agendamento:", err.message);
       }
     };
 
