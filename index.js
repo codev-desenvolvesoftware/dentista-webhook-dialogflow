@@ -221,9 +221,11 @@ function formatarDataHora(valor, tipo) {
   if (!valor || typeof valor !== 'string') return '';
 
   try {
+    valor = valor.trim(); // <-- importante!
+
     if (tipo === 'hora') {
-      // Aceita 11, 11h, 11:00, 11h30, 11:30
-      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/;
+      // Aceita 11, 11h, 11:00, 11h30, 11:30, com ou sem espaços
+      const horaRegex = /^(\d{1,2})\s*(?:[:hH]?\s*(\d{2}))?$/;
       const match = valor.match(horaRegex);
       if (match) {
         const h = match[1].padStart(2, '0');
