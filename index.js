@@ -176,28 +176,42 @@ async function notifyTelegram(phone, message) {
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
   const texto = message?.text?.message || '';
-
-  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/; //Aceita também nomes únicos (mas dá preferência a dois nomes)
+  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /(\d{1,2})[:hH](\d{2})/;
-
+  const horaRegex = /\b(\d{1,2})[:hH]?(\d{2})?\b/;
   const nomeMatch = texto.match(nomeRegex);
   const dataMatch = texto.match(dataRegex);
   const horaMatch = texto.match(horaRegex);
-
   const nome = nomeMatch ? nomeMatch[1].trim() : '';
-  const data = dataMatch
-    ? `2025-${dataMatch[2].padStart(2, '0')}-${dataMatch[1].padStart(2, '0')}T00:00:00-03:00`
-    : '';
-  const hora = horaMatch
-    ? `2025-05-24T${horaMatch[1].padStart(2, '0')}:${horaMatch[2]}:00-03:00`
-    : '';
 
-  // Procedimento: tudo que vem depois da hora
+  let data = '';
+  if (dataMatch) {
+    const dia = parseInt(dataMatch[1]);
+    const mes = parseInt(dataMatch[2]);
+    const hoje = new Date();
+    let ano = hoje.getFullYear();
+
+    const dataTentativa = new Date(ano, mes - 1, dia);
+    const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+
+    // Se a data informada já passou neste ano, joga para o próximo
+    if (dataTentativa < hojeSemHora) {
+      ano += 1;
+    }
+    data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
+  }
+  
+  let hora = '';
+  if (horaMatch) {
+    const h = horaMatch[1].padStart(2, '0');
+    const m = horaMatch[2] ? horaMatch[2].padStart(2, '0') : '00';
+    hora = `${h}:${m}`; // formato padrão para depois formatar como hora
+  }
+
   let procedimento = '';
   if (horaMatch && horaMatch.index !== undefined) {
     const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
-    procedimento = afterHora.split(' ').slice(0, 4).join(' '); // evita frases longas
+    procedimento = afterHora.split(' ').slice(0, 4).join(' ');
   }
 
   return { nome, data, hora, procedimento };
@@ -208,37 +222,31 @@ function extractFallbackFields(message) {
 function formatarDataHora(isoString, tipo) {
   if (!isoString || typeof isoString !== 'string') return '';
   try {
-    let dataObj;
-    // Se for apenas hora (ex: "08:00:00" ou "08:00")
-    const horaRegex = /^(\d{2}):(\d{2})(?::\d{2})?$/;
-    if (horaRegex.test(isoString) && tipo === 'hora') {
-      const [_, hora, minuto] = isoString.match(horaRegex);
-      dataObj = new Date();
-      dataObj.setHours(parseInt(hora), parseInt(minuto), 0, 0);
-    } else {
-      dataObj = new Date(isoString);
+    if (tipo === 'hora') {
+      const horaRegex = /^(\d{1,2}):(\d{2})$/;
+      const match = isoString.match(horaRegex);
+      if (match) {
+        const h = match[1].padStart(2, '0');
+        const m = match[2];
+        return `${h}:${m}`;
+      } else {
+        return 'Data inválida';
+      }
     }
+
+    const dataObj = new Date(isoString);
     if (isNaN(dataObj.getTime())) return 'Data inválida';
 
     if (tipo === 'data') {
       return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     }
-    if (tipo === 'hora') {
-      return dataObj.toLocaleTimeString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false // impede conversão para AM/PM
-      });
-    }
+
     return '';
   } catch (e) {
     console.error("Erro ao formatar data/hora:", e);
     return '';
   }
 }
-
-
 
 // Função para capitalizar a primeira letra de cada palavra
 function capitalizarNomeCompleto(nome) {
@@ -340,7 +348,7 @@ app.post('/zapi-webhook', async (req, res) => {
           hora = horaExtraidaTexto;
         }
 
-        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} está agendada para ${data} às ${hora}. Procedimento: ${procedimento}.`;
+        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
         await logToAgendamentosSheet({
           nome: nomeFormatado,
