@@ -175,52 +175,48 @@ async function notifyTelegram(phone, message) {
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
   const texto = message?.text?.message?.toLowerCase() || '';
-
   const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+)*)/;
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-
-  // Suporta "10", "10h", "10 horas", "10:30", "1030", "14h30"
   const horaRegex = /\b(\d{1,2})(?:[:hH]?(\d{2}))?\s?(?:horas?)?\b/;
-
   const nomeMatch = texto.match(nomeRegex);
   const dataMatch = texto.match(dataRegex);
   const horaMatch = texto.match(horaRegex);
-
   const nome = nomeMatch ? nomeMatch[1].trim() : '';
 
-  // 🗓️ DATA COM ANO AUTOMÁTICO CORRETO
+  // Correção da DATA
   let data = '';
   if (dataMatch) {
     const dia = parseInt(dataMatch[1]);
     const mes = parseInt(dataMatch[2]);
+
     const hoje = new Date();
+    const dataHojeZerada = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
     let ano = hoje.getFullYear();
 
     const tentativa = new Date(ano, mes - 1, dia);
-    if (tentativa < hoje.setHours(0, 0, 0, 0)) {
+    if (tentativa < dataHojeZerada) {
       ano += 1;
     }
-
     data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
   }
 
-  // ⏰ HORA MAIS FLEXÍVEL
+  // Correção da HORA
   let hora = '';
   if (horaMatch) {
-    const h = horaMatch[1].padStart(2, '0');
-    const m = horaMatch[2] ? horaMatch[2].padStart(2, '0') : '00';
-    hora = `${h}:${m}`; // formato compatível com formatarDataHora()
+    const h = String(horaMatch[1]).padStart(2, '0');
+    const m = horaMatch[2] ? String(horaMatch[2]).padStart(2, '0') : '00';
+    hora = `${h}:${m}`;
   }
 
-  // Procedimento: tudo que vem depois da hora
+  // Procedimento
   let procedimento = '';
   if (horaMatch && horaMatch.index !== undefined) {
     const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
     procedimento = afterHora.split(' ').slice(0, 4).join(' ');
   }
-
   return { nome, data, hora, procedimento };
 }
+
 
 // Formata data e hora
 function formatarDataHora(isoString, tipo) {
