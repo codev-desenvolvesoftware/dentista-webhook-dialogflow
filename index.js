@@ -223,27 +223,45 @@ function formatarDataHora(valor, tipo) {
   console.log(`📥 formatarDataHora | tipo: ${tipo} | valor bruto: "${valor}"`);
 
   try {
-    valor = valor
-      .normalize("NFKD")
-      .replace(/[\u200B-\u200D\uFEFF]/g, '')  // Remove caracteres invisíveis específicos
-      .replace(/[^\x20-\x7E]/g, '')           // Remove todos fora do intervalo ASCII imprimível
-      .trim();
-
-    console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
-    console.log(`📐 Código ASCII da string hora:`, valor.split('').map(c => c.charCodeAt(0)));
+    // Remover caracteres invisíveis de qualquer valor
+    valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '');
 
     if (tipo === 'hora') {
-      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/; // <- regex corrigida aqui! (grupo dos minutos completamente opcional, mesmo que h esteja presente)
-      const match = valor.match(horaRegex);
-      if (match) {
-        const h = match[1].padStart(2, '0');
-        const m = match[2] ? match[2].padStart(2, '0') : '00';
-        return `${h}:${m}`;
+      valor = valor
+        .replace(/[^\d\w:h\s]/g, '') // mantém apenas o necessário para hora
+        .replace(/\s/g, '')          // remove espaços
+        .toLowerCase();              // padroniza
+
+      console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
+      console.log(`📐 Código ASCII da string:`, valor.split('').map(c => c.charCodeAt(0)));
+
+      let horas, minutos;
+
+      if (/^\d{1,2}h\d{1,2}$/.test(valor)) {
+        [horas, minutos] = valor.split('h');
+      } else if (/^\d{1,2}h$/.test(valor)) {
+        horas = valor.replace('h', '');
+        minutos = '00';
+      } else if (/^\d{1,2}:\d{1,2}$/.test(valor)) {
+        [horas, minutos] = valor.split(':');
+      } else if (/^\d{4}$/.test(valor)) {
+        horas = valor.slice(0, 2);
+        minutos = valor.slice(2);
+      } else if (/^\d{1,2}$/.test(valor)) {
+        horas = valor;
+        minutos = '00';
+      } else {
+        return 'Hora inválida';
       }
-      return 'Hora inválida';
+
+      horas = horas.padStart(2, '0');
+      minutos = minutos.padStart(2, '0');
+
+      return `${horas}:${minutos}`;
     }
 
     if (tipo === 'data') {
+      console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
       const dataObj = new Date(valor);
       if (isNaN(dataObj.getTime())) return 'Data inválida';
       return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -255,6 +273,7 @@ function formatarDataHora(valor, tipo) {
     return '';
   }
 }
+module.exports = { formatarDataHora };
 
 // Função para capitalizar a primeira letra de cada palavra
 function capitalizarNomeCompleto(nome) {
