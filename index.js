@@ -4,7 +4,6 @@ const { GoogleAuth } = require('google-auth-library');
 const { google } = require('googleapis');
 const axios = require('axios');
 require('dotenv').config();
-const { JWT } = require('google-auth-library');
 const fs = require('fs');
 
 const {
@@ -174,43 +173,59 @@ async function notifyTelegram(phone, message) {
 
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
-  const texto = message?.text?.message?.toLowerCase() || '';
+  const rawText = message?.text?.message || '';
+  const texto = rawText.replace(/\s+/g, ' ').trim(); // Normaliza espaços
 
-  const nomeRegex = /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,3})/;
+  // Expressões regulares
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /\b(\d{1,2})(?:[:hH]?(\d{2}))?\b/;
+  const horaRegex = /\b(\d{1,2})\s*[h:]\s*(\d{0,2})\b/;
 
-  const nomeMatch = texto.match(nomeRegex);
-  const dataMatch = texto.match(dataRegex);
-  const horaMatch = texto.match(horaRegex);
-
-  const nome = nomeMatch ? nomeMatch[1].trim() : '';
-
-  // Data
+  let nome = '';
   let data = '';
+  let hora = '';
+  let procedimento = '';
+
+  // Extrair data
+  const dataMatch = texto.match(dataRegex);
+  let dataIndex = -1;
   if (dataMatch) {
-    const dia = parseInt(dataMatch[1]);
-    const mes = parseInt(dataMatch[2]);
+    const dia = parseInt(dataMatch[1], 10);
+    const mes = parseInt(dataMatch[2], 10);
     const hoje = new Date();
     let ano = hoje.getFullYear();
     const tentativa = new Date(ano, mes - 1, dia);
-    if (tentativa < hoje) ano += 1;
+    if (tentativa.setHours(0, 0, 0, 0) < hoje.setHours(0, 0, 0, 0)) {
+      ano += 1;
+    }
     data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
+    dataIndex = dataMatch.index ?? -1;
   }
 
-  // Hora
-  let hora = '';
+  // Extrair hora
+  let horaIndex = -1;
+  const horaMatch = texto.match(horaRegex);
   if (horaMatch) {
-    const h = horaMatch[1].padStart(2, '0');
-    const m = horaMatch[2] ? horaMatch[2].padStart(2, '0') : '00';
-    hora = `${h}:${m}`;
+    const h = parseInt(horaMatch[1], 10);
+    const m = horaMatch[2] ? parseInt(horaMatch[2], 10) : 0;
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+      hora = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      horaIndex = horaMatch.index ?? -1;
+    }
   }
 
-  // Procedimento após a hora
-  let procedimento = '';
-  if (horaMatch && horaMatch.index !== undefined) {
-    const afterHora = texto.slice(horaMatch.index + horaMatch[0].length).trim();
-    procedimento = afterHora.split(' ').slice(0, 4).join(' ');
+  // Extrair nome — tudo antes da data/hora (mínimo entre dataIndex e horaIndex)
+  let corte = Math.min(...[dataIndex, horaIndex].filter(i => i >= 0));
+  if (corte === Infinity) corte = texto.length;
+
+  // Se não houver data ou hora, pega o texto todo
+  const nomeCompleto = texto.slice(0, corte).trim();
+  const palavrasNome = nomeCompleto.split(/\s+/).slice(0, 4);
+  nome = palavrasNome.join(' ');
+
+  // Extrair até 5 palavras no procedimento — tudo após a hora
+  if (horaIndex >= 0) {
+    const afterHora = texto.slice(horaIndex + horaMatch[0].length).trim();
+    procedimento = afterHora.split(/\s+/).slice(0, 5).join(' ');
   }
 
   return { nome, data, hora, procedimento };
@@ -218,21 +233,27 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
-  if (!valor || typeof valor !== 'string') return '';
+  if (valor === undefined || valor === null || typeof valor !== 'string') return '';
 
-  console.log(`📥 formatarDataHora | tipo: ${tipo} | valor bruto: "${valor}"`);
+  // Remover caracteres invisíveis e espaços
+  valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+  if (valor === '') {
+    // string vazia: comportamento depende do tipo
+    if (tipo === 'data') return 'Data inválida';
+    if (tipo === 'hora') return '';
+    return '';
+  }
+
+  console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
 
   try {
-    // Remover caracteres invisíveis de qualquer valor
-    valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '');
-
     if (tipo === 'hora') {
       valor = valor
-        .replace(/[^\d\w:h\s]/g, '') // mantém apenas o necessário para hora
-        .replace(/\s/g, '')          // remove espaços
-        .toLowerCase();              // padroniza
+        .replace(/[^\d\w:h\s]/g, '') // mantém apenas o necessário
+        .replace(/\s/g, '')
+        .toLowerCase();
 
-      console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
       console.log(`📐 Código ASCII da string:`, valor.split('').map(c => c.charCodeAt(0)));
 
       let horas, minutos;
@@ -261,10 +282,42 @@ function formatarDataHora(valor, tipo) {
     }
 
     if (tipo === 'data') {
-      console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
-      const dataObj = new Date(valor);
-      if (isNaN(dataObj.getTime())) return 'Data inválida';
-      return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const isoLike = /^\d{4}-\d{2}-\d{2}$/;
+      const slashFormat = /^\d{2}\/\d{2}\/\d{4}$/;
+      const dashUSFormat = /^\d{2}-\d{2}-\d{4}$/;
+      const slashYearFirst = /^\d{4}\/\d{2}\/\d{2}$/;
+
+      let dateObj;
+
+      if (isoLike.test(valor)) {
+        const [ano, mes, dia] = valor.split('-').map(Number);
+        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
+        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
+      } else if (slashFormat.test(valor)) {
+        const [dia, mes, ano] = valor.split('/').map(Number);
+        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
+        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
+      } else if (dashUSFormat.test(valor)) {
+        const [mes, dia, ano] = valor.split('-').map(Number);
+        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
+        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
+      } else if (slashYearFirst.test(valor)) {
+        const [ano, mes, dia] = valor.split('/').map(Number);
+        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
+        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
+      } else if (/^\d{4}-\d{2}$/.test(valor)) {
+        return 'Data inválida'; // Ex: "2025-05"
+      } else {
+        dateObj = new Date(valor);
+      }
+
+      if (isNaN(dateObj.getTime())) return 'Data inválida';
+
+      const dia = dateObj.getUTCDate().toString().padStart(2, '0');
+      const mes = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
+      const ano = dateObj.getUTCFullYear();
+
+      return `${dia}/${mes}/${ano}`;
     }
 
     return '';
@@ -273,16 +326,28 @@ function formatarDataHora(valor, tipo) {
     return '';
   }
 }
-module.exports = { formatarDataHora };
 
 // Função para capitalizar a primeira letra de cada palavra
 function capitalizarNomeCompleto(nome) {
-  if (!nome) return '';
+  if (!nome || typeof nome !== 'string') return '';
+
+  // Normaliza espaços
+  nome = nome.trim().replace(/\s+/g, ' ');
+
+  // Capitaliza cada palavra do nome
   return nome
     .split(' ')
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
-    .join(' ')
-    .trim();
+    .map(palavra =>
+      palavra
+        .split(/(['-])/g) // separa mantendo hífen e apóstrofo como delimitadores
+        .map(parte =>
+          parte === '-' || parte === "'"
+            ? parte // mantém hífen ou apóstrofo como está
+            : parte.charAt(0).toUpperCase() + parte.slice(1).toLowerCase()
+        )
+        .join('')
+    )
+    .join(' ');
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
@@ -595,6 +660,15 @@ app.post('/telegram-webhook', async (req, res) => {
   res.sendStatus(200);
 });
 
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor iniciado na porta ${PORT}`);
+  });
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Servidor iniciado na porta ${PORT}`));
+module.exports = {
+  formatarDataHora,
+  capitalizarNomeCompleto,
+  extractFallbackFields
+};
