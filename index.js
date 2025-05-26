@@ -233,7 +233,7 @@ function formatarDataHora(valor, tipo) {
     console.log(`📐 Código ASCII da string hora:`, valor.split('').map(c => c.charCodeAt(0)));
 
     if (tipo === 'hora') {
-      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/; // <- regex corrigida aqui!
+      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/; // <- regex corrigida aqui! (grupo dos minutos completamente opcional, mesmo que h esteja presente)
       const match = valor.match(horaRegex);
       if (match) {
         const h = match[1].padStart(2, '0');
