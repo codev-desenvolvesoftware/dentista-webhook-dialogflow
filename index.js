@@ -226,12 +226,13 @@ function formatarDataHora(isoString, tipo) {
 
 
 // Função para capitalizar a primeira letra de cada palavra
-function capitalizarNome(nome) {
+function capitalizarNomeCompleto(nome) {
   if (!nome) return '';
   return nome
     .split(' ')
-    .map(palavra => palavra.charAt(0).toUpperCase() + palavra.slice(1).toLowerCase())
-    .join(' ');
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
@@ -305,7 +306,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
         const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
-        const nomeFormatado = capitalizarNome(nomeFinal);
+        const nomeFormatado = capitalizarNomeCompleto(nomeFinal);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
