@@ -217,20 +217,18 @@ function extractFallbackFields(message) {
 }
 
 // Formata data e hora
-function formatarDataHora(valor, tipo) {  
+function formatarDataHora(valor, tipo) {
   if (!valor || typeof valor !== 'string') return '';
 
   console.log(`📥 formatarDataHora | tipo: ${tipo} | valor bruto: "${valor}"`);
 
   try {
-    // Remove espaços e caracteres invisíveis
     valor = valor.normalize("NFKD").replace(/[^\x00-\x7F]/g, '').trim();
 
     console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
 
     if (tipo === 'hora') {
-      // Regex mais permissiva: aceita 11, 11h, 11:00, 11h30, 11:30, etc.
-      const horaRegex = /^(\d{1,2})(?:[:hH](\d{2}))?$/;
+      const horaRegex = /^(\d{1,2})(?:[:hH]?(\d{2}))?$/; // <- regex corrigida aqui!
       const match = valor.match(horaRegex);
       if (match) {
         const h = match[1].padStart(2, '0');
@@ -251,7 +249,7 @@ function formatarDataHora(valor, tipo) {
     console.error("❌ Erro ao formatar data/hora:", e);
     return '';
   }
-} 
+}
 
 // Função para capitalizar a primeira letra de cada palavra
 function capitalizarNomeCompleto(nome) {
