@@ -207,22 +207,37 @@ function extractFallbackFields(message) {
 // Formata data e hora
 function formatarDataHora(isoString, tipo) {
   if (!isoString || typeof isoString !== 'string') return '';
+  try {
+    let dataObj;
+    // Se for apenas hora (ex: "08:00:00" ou "08:00")
+    const horaRegex = /^(\d{2}):(\d{2})(?::\d{2})?$/;
+    if (horaRegex.test(isoString) && tipo === 'hora') {
+      const [_, hora, minuto] = isoString.match(horaRegex);
+      dataObj = new Date();
+      dataObj.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    } else {
+      dataObj = new Date(isoString);
+    }
+    if (isNaN(dataObj.getTime())) return 'Data inválida';
 
-  const dataObj = new Date(isoString);
-  if (isNaN(dataObj.getTime())) return 'Data inválida';
-
-  if (tipo === 'data') {
-    return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    if (tipo === 'data') {
+      return dataObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    }
+    if (tipo === 'hora') {
+      return dataObj.toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false // impede conversão para AM/PM
+      });
+    }
+    return '';
+  } catch (e) {
+    console.error("Erro ao formatar data/hora:", e);
+    return '';
   }
-  if (tipo === 'hora') {
-    return dataObj.toLocaleTimeString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-  return '';
 }
+
 
 
 // Função para capitalizar a primeira letra de cada palavra
@@ -305,11 +320,11 @@ app.post('/zapi-webhook', async (req, res) => {
         const dataRaw = Array.isArray(parameters?.data) ? parameters.data[0] : parameters?.data;
         const horaRaw = Array.isArray(parameters?.hora) ? parameters.hora[0] : parameters?.hora;
 
-        const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
+        const nomeFinal = fallback.nome || nomeRaw || 'Cliente';
         const nomeFormatado = capitalizarNomeCompleto(nomeFinal);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
-        const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento';
+        const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
         let data = formatarDataHora(dataRaw || fallback.data, 'data');
         let hora = formatarDataHora(horaRaw || fallback.hora, 'hora');
 
