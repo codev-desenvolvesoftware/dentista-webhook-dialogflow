@@ -495,10 +495,12 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    if (intent === 'VerificarConvenio') {
-      const normalize = (text) =>
-        text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
+    // Utilitário de normalização
+    const normalize = (text) =>
+      text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
 
+    // 🧠 Trata intenção explícita de verificação de convênio
+    if (intent === 'VerificarConvenio') {
       const convenioInformado = normalize(parameters?.convenio_aceito || '');
       const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
       const atende = Boolean(convenioEncontrado);
@@ -513,34 +515,32 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    if (intent === 'FalarComAtendente') {
-      await notifyTelegram(cleanPhone, message);
-      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
-      return res.status(200).send("OK");
-    }
-
-    // 👇 Verificação extra caso Dialogflow não detecte intent mas mensagem possua indício de convênio
-    const podeSerConvenio = /\b(uniodonto|bradesco|amil|sulamérica|interodonto|supreme|plano|conv[eê]nio)\b/i.test(message);
-    if ((!intent || intent === 'Default Fallback Intent') && podeSerConvenio) {
-      const normalize = (text) =>
-        text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
-
+    // 🔁 Fallback caso a intent seja indefinida ou genérica, mas o texto pareça um convênio
+    if ((!intent || intent === 'Default Fallback Intent' || intent === 'AtendeConvenio?') && message) {
       const convenioInformado = normalize(message);
       const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
       const atende = Boolean(convenioEncontrado);
 
-      if (atende) {
-        const resposta = `✅ Legal! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*.\nQuer marcar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`;
-        await sendZapiMessage(resposta);
-        await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'ConvenioDetectadoViaFallback' });
-        return res.status(200).send("OK");
-      } else {
-        const resposta = `Não consegui identificar esse convênio, mas posso te transferir para o atendimento humano. 🤖➡️👩‍💼`;
-        await sendZapiMessage(resposta);
+      const respostaFallback = atende
+        ? `✅ Legal! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*.\nQuer marcar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas não tem problema! 😊\nPosso agendar uma avaliação gratuita? 🦷\n_Digite_: *Sim* ou _Não_`;
+
+      const novaIntent = atende ? 'ConvenioDetectadoViaFallback' : 'ConvenioNaoAtendido';
+
+      await sendZapiMessage(respostaFallback);
+      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: novaIntent });
+
+      if (!atende) {
         await notifyTelegram(cleanPhone, message);
-        await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FalarComAtendente' });
-        return res.status(200).send("OK");
       }
+
+      return res.status(200).send("OK");
+    }
+
+    if (intent === 'FalarComAtendente') {
+      await notifyTelegram(cleanPhone, message);
+      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
+      return res.status(200).send("OK");
     }
 
     // Se nada foi tratado até aqui, responde o que o Dialogflow sugeriu
@@ -551,7 +551,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     // Default fallback final
-    await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
+    await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: '' });
     return res.status(200).send("Mensagem humana registrada.");
 
   } catch (err) {
