@@ -516,7 +516,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     // 🔁 Fallback caso a intent seja indefinida ou genérica, mas o texto pareça um convênio
-    if ((!intent || intent === 'Default Fallback Intent' || intent === 'AtendeConvenio?') && message) {
+    if ((!intent || intent === 'Default Fallback Intent') && message) {
       const convenioInformado = normalize(message);
       const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
       const atende = Boolean(convenioEncontrado);
