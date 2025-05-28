@@ -400,6 +400,13 @@ app.post('/zapi-webhook', async (req, res) => {
   const sessionId = `session-${from}`;
   const cleanPhone = String(from).replace(/\D/g, '');
 
+  const normalize = (text) =>
+    text.toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9 ]+/g, "")
+      .trim();
+
   if (!from || !message) return res.status(400).send('Dados inválidos');
 
   try {
@@ -495,44 +502,29 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    // Utilitário de normalização
-    const normalize = (text) =>
-      text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
+    if (intent === 'VerificarListaConvenios') {
 
-    // 🧠 Trata intenção explícita de verificação de convênio
-    if (intent === 'VerificarConvenio') {
-      const convenioInformado = normalize(parameters?.convenio_aceito || '');
-      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
+      const convenioInformadoRaw = parameters?.convenio_aceito || '';
+      const convenioInformado = normalize(convenioInformadoRaw);
+
+      const convenioEncontrado = conveniosAceitos.find(c =>
+        convenioInformado.includes(normalize(c))
+      );
+
       const atende = Boolean(convenioEncontrado);
-
       const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+
       const respostaFinal = atende
         ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas não se preocupe! 😉\nVamos agendar uma avaliação gratuita? 🦷\n_Digite_: *Sim* ou _Não_`;
+        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema! \nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
-      await logToSheet({ phone: cleanPhone, message: convenioInformado, type: 'bot', intent: novaIntent });
       await sendZapiMessage(respostaFinal);
-      return res.status(200).send("OK");
-    }
-
-    // 🔁 Fallback caso a intent seja indefinida ou genérica, mas o texto pareça um convênio
-    if ((!intent || intent === 'Default Fallback Intent') && message) {
-      const convenioInformado = normalize(message);
-      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
-      const atende = Boolean(convenioEncontrado);
-
-      const respostaFallback = atende
-        ? `✅ Legal! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*.\nQuer marcar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas não tem problema! 😊\nPosso agendar uma avaliação gratuita? 🦷\n_Digite_: *Sim* ou _Não_`;
-
-      const novaIntent = atende ? 'ConvenioDetectadoViaFallback' : 'ConvenioNaoAtendido';
-
-      await sendZapiMessage(respostaFallback);
-      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: novaIntent });
-
-      if (!atende) {
-        await notifyTelegram(cleanPhone, message);
-      }
+      await logToSheet({
+        phone: cleanPhone,
+        message: convenioInformadoRaw,
+        type: 'bot',
+        intent: novaIntent
+      });
 
       return res.status(200).send("OK");
     }
@@ -540,6 +532,19 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
       await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
+      return res.status(200).send("OK");
+    }
+
+    // 🩺 Verifica se a mensagem recebida é um possível convênio digitado diretamente (fallback inteligente)
+    const normalizedMessage = normalize(message);
+    const convenioEncontradoNoFallback = conveniosAceitos.find(c =>
+      normalizedMessage.includes(normalize(c))
+    );
+
+    if (convenioEncontradoNoFallback) {
+      const respostaConvenio = `✅ Legal! Atendemos o convênio *${convenioEncontradoNoFallback.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`;
+      await sendZapiMessage(respostaConvenio);
+      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'ConvenioAtendido (fallback)' });
       return res.status(200).send("OK");
     }
 
