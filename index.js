@@ -465,9 +465,11 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 🕒 Extração manual da hora direto da mensagem original
         let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
-        const matchHoraTexto = message.match(/\b\d{1,2}[:h]?\d{0,2}\b/i);
+        const matchHoraTexto = message.match(/\b(\d{1,2})[:h](\d{2})\b/i);
         if (matchHoraTexto) {
-          const horaExtraidaTexto = formatarDataHora(matchHoraTexto[0], 'hora');
+          const horaBruta = `${matchHoraTexto[1]}:${matchHoraTexto[2]}`;
+          const horaExtraidaTexto = formatarDataHora(horaBruta, 'hora');
+
           if (horaExtraidaTexto && horaExtraidaTexto !== 'Hora inválida') {
             console.log('🛠️ Sobrescrevendo hora com base no texto da mensagem:', horaExtraidaTexto);
             hora = horaExtraidaTexto;
