@@ -503,12 +503,12 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'VerificarListaConvenios') {
-
-      const convenioInformadoRaw = parameters?.convenio_aceito || queryText || '';
-      const convenioInformado = normalize(convenioInformadoRaw);
+      const queryText = queryResult?.queryText || '';
+      const convenioInformadoRaw = parameters?.convenio || queryText;
+      const convenioNormalizado = normalize(convenioInformadoRaw);
 
       const convenioEncontrado = conveniosAceitos.find(c =>
-        convenioInformado.includes(normalize(c))
+        convenioNormalizado.includes(normalize(c))
       );
 
       const atende = Boolean(convenioEncontrado);
@@ -516,7 +516,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const respostaFinal = atende
         ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema! \nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
       await sendZapiMessage(respostaFinal);
       await logToSheet({
