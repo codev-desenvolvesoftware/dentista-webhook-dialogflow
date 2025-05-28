@@ -504,7 +504,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'VerificarListaConvenios') {
 
-      const convenioInformadoRaw = parameters?.convenio_aceito || '';
+      const convenioInformadoRaw = parameters?.convenio_aceito || queryText || '';
       const convenioInformado = normalize(convenioInformadoRaw);
 
       const convenioEncontrado = conveniosAceitos.find(c =>
