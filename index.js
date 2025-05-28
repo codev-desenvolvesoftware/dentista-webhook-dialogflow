@@ -283,7 +283,7 @@ function formatarDataHora(valor, tipo) {
       } else if (/^\d{1,2}$/.test(valorLimpo)) {
         horas = valorLimpo;
         minutos = '00';
-      } else {
+      } else if (/\d{4}-\d{2}-\d{2}t\d{1,2}:\d{2}/i.test(valorLimpo)) {
         const dateFromISO = new Date(valorLimpo);
         if (!isNaN(dateFromISO.getTime())) {
           const horaLocal = dateFromISO.toLocaleTimeString('pt-BR', {
@@ -294,6 +294,8 @@ function formatarDataHora(valor, tipo) {
           });
           return horaLocal;
         }
+        return 'Hora inválida';
+      } else {
         return 'Hora inválida';
       }
 
