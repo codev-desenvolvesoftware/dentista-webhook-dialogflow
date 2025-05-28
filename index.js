@@ -238,35 +238,35 @@ function formatarDataHora(valor, tipo) {
   // Remover caracteres invisíveis e espaços
   valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
-  // ⚠️ Verifica string vazia após limpar
   if (valor === '') {
-    if (tipo === 'data') return 'Data inválida';
-    if (tipo === 'hora') return '';
-    return '';
+    return tipo === 'data' ? 'Data inválida' : '';
   }
 
   console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
 
   try {
     if (tipo === 'hora') {
-      // Tentar criar objeto Date para capturar casos de ISO completo
-      const dateFromISO = new Date(valor);
-      if (!isNaN(dateFromISO.getTime())) {
-        // Se for válido e valor contém caractere 'T' (ISO), extrai horas e minutos
-        if (valor.includes('T')) {
-          const horas = dateFromISO.getHours().toString().padStart(2, '0');
-          const minutos = dateFromISO.getMinutes().toString().padStart(2, '0');
-          return `${horas}:${minutos}`;
-        }
-      }
-
-      // Caso não seja ISO completo, limpar o valor para formatos comuns
       const valorLimpo = valor
-        .replace(/[^\d\w:h\s]/g, '')
+        .replace(/[^\d\w:h\sT\-:+]/g, '') // manter ISO e h/min
         .replace(/\s/g, '')
         .toLowerCase();
 
       let horas, minutos;
+
+      // Novo: se for timestamp ISO com hora
+      if (/^\d{4}-\d{2}-\d{2}t\d{1,2}:\d{2}/i.test(valorLimpo)) {
+        const data = new Date(valorLimpo);
+        if (!isNaN(data.getTime())) {
+          const horaLocal = data.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'America/Sao_Paulo'
+          });
+          return horaLocal;
+        }
+        return 'Hora inválida';
+      }
 
       if (/^\d{1,2}h\d{1,2}$/.test(valorLimpo)) {
         [horas, minutos] = valorLimpo.split('h');
@@ -284,6 +284,16 @@ function formatarDataHora(valor, tipo) {
         horas = valorLimpo;
         minutos = '00';
       } else {
+        const dateFromISO = new Date(valorLimpo);
+        if (!isNaN(dateFromISO.getTime())) {
+          const horaLocal = dateFromISO.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'America/Sao_Paulo'
+          });
+          return horaLocal;
+        }
         return 'Hora inválida';
       }
 
@@ -317,9 +327,11 @@ function formatarDataHora(valor, tipo) {
         const [ano, mes, dia] = valor.split('/').map(Number);
         if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
         dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-      } else if (/^\d{4}-\d{2}$/.test(valor)) {
-        return 'Data inválida';
       } else {
+        // Verificação extra: impedir que datas truncadas tipo "2025-05" sejam válidas
+        if (/^\d{4}-\d{2}$/.test(valor) || /^\d{4}$/.test(valor)) {
+          return 'Data inválida';
+        }
         dateObj = new Date(valor);
       }
 
