@@ -174,9 +174,7 @@ async function notifyTelegram(phone, message) {
 // Extrai campos de fallback da mensagem caso o Dialogflow não consiga extrair os parâmetros
 function extractFallbackFields(message) {
   const rawText = message?.text?.message || '';
-  const texto = rawText.replace(/\s+/g, ' ').trim(); // Normaliza espaços
-
-  // Expressões regulares
+  const texto = rawText.replace(/\s+/g, ' ').trim();
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
   const horaRegex = /\b(\d{1,2})\s*[h:]\s*(\d{0,2})\b/;
 
@@ -185,25 +183,24 @@ function extractFallbackFields(message) {
   let hora = '';
   let procedimento = '';
 
-  // Extrair data
+  // === Data ===
   const dataMatch = texto.match(dataRegex);
   let dataIndex = -1;
   if (dataMatch) {
-    const dia = parseInt(dataMatch[1], 10);
-    const mes = parseInt(dataMatch[2], 10);
+    const [_, diaStr, mesStr] = dataMatch;
+    const dia = parseInt(diaStr, 10);
+    const mes = parseInt(mesStr, 10);
     const hoje = new Date();
     let ano = hoje.getFullYear();
-    const tentativa = new Date(ano, mes - 1, dia);
-    if (tentativa.setHours(0, 0, 0, 0) < hoje.setHours(0, 0, 0, 0)) {
-      ano += 1;
-    }
+    const dataTentativa = new Date(ano, mes - 1, dia);
+    if (dataTentativa < hoje.setHours(0, 0, 0, 0)) ano += 1;
+
     data = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}T00:00:00-03:00`;
     dataIndex = dataMatch.index ?? -1;
   }
-
-  // Extrair hora
-  let horaIndex = -1;
+  // === Hora ===
   const horaMatch = texto.match(horaRegex);
+  let horaIndex = -1;
   if (horaMatch) {
     const h = parseInt(horaMatch[1], 10);
     const m = horaMatch[2] ? parseInt(horaMatch[2], 10) : 0;
@@ -212,22 +209,15 @@ function extractFallbackFields(message) {
       horaIndex = horaMatch.index ?? -1;
     }
   }
-
-  // Extrair nome — tudo antes da data/hora (mínimo entre dataIndex e horaIndex)
-  let corte = Math.min(...[dataIndex, horaIndex].filter(i => i >= 0));
-  if (corte === Infinity) corte = texto.length;
-
-  // Se não houver data ou hora, pega o texto todo
-  const nomeCompleto = texto.slice(0, corte).trim();
-  const palavrasNome = nomeCompleto.split(/\s+/).slice(0, 4);
-  nome = palavrasNome.join(' ');
-
-  // Extrair até 5 palavras no procedimento — tudo após a hora
+  // === Nome ===
+  const corte = Math.min(...[dataIndex, horaIndex].filter(i => i >= 0));
+  const nomeCompleto = corte !== Infinity ? texto.slice(0, corte).trim() : texto;
+  nome = nomeCompleto.split(/\s+/).slice(0, 4).join(' ');
+  // === Procedimento ===
   if (horaIndex >= 0) {
-    const afterHora = texto.slice(horaIndex + horaMatch[0].length).trim();
-    procedimento = afterHora.split(/\s+/).slice(0, 5).join(' ');
+    const depoisDaHora = texto.slice(horaIndex + horaMatch[0].length).trim();
+    procedimento = depoisDaHora.split(/\s+/).slice(0, 5).join(' ');
   }
-
   return { nome, data, hora, procedimento };
 }
 
@@ -451,8 +441,12 @@ app.post('/zapi-webhook', async (req, res) => {
           nomeRaw = parameters?.nome;
         }
 
+        function limitarNome(nome) {
+          return nome.trim().split(/\s+/).slice(0, 4).join(' ');
+        }
         const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
-        const nomeFormatado = capitalizarNomeCompleto(nomeFinal);
+        const nomeLimitado = limitarNome(nomeFinal);
+        const nomeFormatado = capitalizarNomeCompleto(nomeLimitado);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
         const procedimentoRaw = Array.isArray(parameters?.procedimento)
