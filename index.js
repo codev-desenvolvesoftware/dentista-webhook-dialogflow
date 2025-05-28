@@ -233,13 +233,13 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
-  if (!valor || typeof valor !== 'string') return '';
+  if (typeof valor !== 'string') return '';
 
   // Remover caracteres invisíveis e espaços
   valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
 
+  // ⚠️ Verifica string vazia após limpar
   if (valor === '') {
-    // string vazia: comportamento depende do tipo
     if (tipo === 'data') return 'Data inválida';
     if (tipo === 'hora') return '';
     return '';
@@ -249,19 +249,10 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
-
-      let valorLimpo = valor
+      const valorLimpo = valor
         .replace(/[^\d\w:h\s]/g, '')
         .replace(/\s/g, '')
         .toLowerCase();
-
-      // Detecta se o valor é um datetime ISO e extrai apenas hora e minutos
-      const isoDateTimeMatch = valorLimpo.match(/^(\d{4}-\d{2}-\d{2}T)(\d{2}):(\d{2})/);
-      if (isoDateTimeMatch) {
-        const horas = isoDateTimeMatch[2];
-        const minutos = isoDateTimeMatch[3];
-        return `${horas}:${minutos}`;
-      }
 
       let horas, minutos;
 
@@ -281,6 +272,12 @@ function formatarDataHora(valor, tipo) {
         horas = valorLimpo;
         minutos = '00';
       } else {
+        const dateFromISO = new Date(valorLimpo);
+        if (!isNaN(dateFromISO.getTime())) {
+          horas = dateFromISO.getHours().toString().padStart(2, '0');
+          minutos = dateFromISO.getMinutes().toString().padStart(2, '0');
+          return `${horas}:${minutos}`;
+        }
         return 'Hora inválida';
       }
 
@@ -315,7 +312,7 @@ function formatarDataHora(valor, tipo) {
         if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
         dateObj = new Date(Date.UTC(ano, mes - 1, dia));
       } else if (/^\d{4}-\d{2}$/.test(valor)) {
-        return 'Data inválida'; // Ex: "2025-05"
+        return 'Data inválida';
       } else {
         dateObj = new Date(valor);
       }
