@@ -454,10 +454,8 @@ app.post('/zapi-webhook', async (req, res) => {
           : parameters?.procedimento;
 
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
-
         let data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
-        // 🕒 Extração manual da hora direto da mensagem original
         let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
         const matchHoraTexto = message.match(/\b(\d{1,2})[:h](\d{2})\b/i);
         if (matchHoraTexto) {
@@ -518,14 +516,41 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
       await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
+      return res.status(200).send("OK");
     }
 
+    // 👇 Verificação extra caso Dialogflow não detecte intent mas mensagem possua indício de convênio
+    const podeSerConvenio = /\b(uniodonto|bradesco|amil|sulamérica|interodonto|supreme|plano|conv[eê]nio)\b/i.test(message);
+    if ((!intent || intent === 'Default Fallback Intent') && podeSerConvenio) {
+      const normalize = (text) =>
+        text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, '').trim();
+
+      const convenioInformado = normalize(message);
+      const convenioEncontrado = conveniosAceitos.find(c => convenioInformado.includes(normalize(c)));
+      const atende = Boolean(convenioEncontrado);
+
+      if (atende) {
+        const resposta = `✅ Legal! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*.\nQuer marcar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`;
+        await sendZapiMessage(resposta);
+        await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'ConvenioDetectadoViaFallback' });
+        return res.status(200).send("OK");
+      } else {
+        const resposta = `Não consegui identificar esse convênio, mas posso te transferir para o atendimento humano. 🤖➡️👩‍💼`;
+        await sendZapiMessage(resposta);
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FalarComAtendente' });
+        return res.status(200).send("OK");
+      }
+    }
+
+    // Se nada foi tratado até aqui, responde o que o Dialogflow sugeriu
     if (reply) {
       await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
     }
 
+    // Default fallback final
     await logToSheet({ phone: cleanPhone, message, type: 'atendente', intent: '' });
     return res.status(200).send("Mensagem humana registrada.");
 
