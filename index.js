@@ -462,13 +462,16 @@ app.post('/zapi-webhook', async (req, res) => {
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
 
         let data = formatarDataHora(parameters?.data || fallback.data, 'data');
-        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
 
-        // Verificação e correção via fallback
-        const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
-        if (hora !== horaExtraidaTexto && horaExtraidaTexto && hora === 'Hora inválida') {
-          console.log('⚠️ Corrigindo horário com base no fallback:', horaExtraidaTexto);
-          hora = horaExtraidaTexto;
+        // 🕒 Extração manual da hora direto da mensagem original
+        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
+        const matchHoraTexto = message.match(/\b\d{1,2}[:h]?\d{0,2}\b/i);
+        if (matchHoraTexto) {
+          const horaExtraidaTexto = formatarDataHora(matchHoraTexto[0], 'hora');
+          if (horaExtraidaTexto && horaExtraidaTexto !== 'Hora inválida') {
+            console.log('🛠️ Sobrescrevendo hora com base no texto da mensagem:', horaExtraidaTexto);
+            hora = horaExtraidaTexto;
+          }
         }
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
@@ -515,7 +518,6 @@ app.post('/zapi-webhook', async (req, res) => {
       await sendZapiMessage(respostaFinal);
       return res.status(200).send("OK");
     }
-
 
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
