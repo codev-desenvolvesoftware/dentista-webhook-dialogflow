@@ -249,6 +249,18 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
+      // Tentar criar objeto Date para capturar casos de ISO completo
+      const dateFromISO = new Date(valor);
+      if (!isNaN(dateFromISO.getTime())) {
+        // Se for válido e valor contém caractere 'T' (ISO), extrai horas e minutos
+        if (valor.includes('T')) {
+          const horas = dateFromISO.getHours().toString().padStart(2, '0');
+          const minutos = dateFromISO.getMinutes().toString().padStart(2, '0');
+          return `${horas}:${minutos}`;
+        }
+      }
+
+      // Caso não seja ISO completo, limpar o valor para formatos comuns
       const valorLimpo = valor
         .replace(/[^\d\w:h\s]/g, '')
         .replace(/\s/g, '')
@@ -272,12 +284,6 @@ function formatarDataHora(valor, tipo) {
         horas = valorLimpo;
         minutos = '00';
       } else {
-        const dateFromISO = new Date(valorLimpo);
-        if (!isNaN(dateFromISO.getTime())) {
-          horas = dateFromISO.getHours().toString().padStart(2, '0');
-          minutos = dateFromISO.getMinutes().toString().padStart(2, '0');
-          return `${horas}:${minutos}`;
-        }
         return 'Hora inválida';
       }
 
