@@ -233,7 +233,7 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
-  if (valor === undefined || valor === null || typeof valor !== 'string') return '';
+  if (!valor || typeof valor !== 'string') return '';
 
   // Remover caracteres invisíveis e espaços
   valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
@@ -249,27 +249,36 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
-      valor = valor
-        .replace(/[^\d\w:h\s]/g, '') // mantém apenas o necessário
+
+      let valorLimpo = valor
+        .replace(/[^\d\w:h\s]/g, '')
         .replace(/\s/g, '')
         .toLowerCase();
 
-      console.log(`📐 Código ASCII da string:`, valor.split('').map(c => c.charCodeAt(0)));
+      // Detecta se o valor é um datetime ISO e extrai apenas hora e minutos
+      const isoDateTimeMatch = valorLimpo.match(/^(\d{4}-\d{2}-\d{2}T)(\d{2}):(\d{2})/);
+      if (isoDateTimeMatch) {
+        const horas = isoDateTimeMatch[2];
+        const minutos = isoDateTimeMatch[3];
+        return `${horas}:${minutos}`;
+      }
 
       let horas, minutos;
 
-      if (/^\d{1,2}h\d{1,2}$/.test(valor)) {
-        [horas, minutos] = valor.split('h');
-      } else if (/^\d{1,2}h$/.test(valor)) {
-        horas = valor.replace('h', '');
+      if (/^\d{1,2}h\d{1,2}$/.test(valorLimpo)) {
+        [horas, minutos] = valorLimpo.split('h');
+      } else if (/^\d{1,2}h$/.test(valorLimpo)) {
+        horas = valorLimpo.replace('h', '');
         minutos = '00';
-      } else if (/^\d{1,2}:\d{1,2}$/.test(valor)) {
-        [horas, minutos] = valor.split(':');
-      } else if (/^\d{4}$/.test(valor)) {
-        horas = valor.slice(0, 2);
-        minutos = valor.slice(2);
-      } else if (/^\d{1,2}$/.test(valor)) {
-        horas = valor;
+      } else if (/^\d{1,2}:\d{1,2}h$/.test(valorLimpo)) {
+        [horas, minutos] = valorLimpo.replace('h', '').split(':');
+      } else if (/^\d{1,2}:\d{1,2}$/.test(valorLimpo)) {
+        [horas, minutos] = valorLimpo.split(':');
+      } else if (/^\d{4}$/.test(valorLimpo)) {
+        horas = valorLimpo.slice(0, 2);
+        minutos = valorLimpo.slice(2);
+      } else if (/^\d{1,2}$/.test(valorLimpo)) {
+        horas = valorLimpo;
         minutos = '00';
       } else {
         return 'Hora inválida';
@@ -323,6 +332,7 @@ function formatarDataHora(valor, tipo) {
     return '';
   } catch (e) {
     console.error("❌ Erro ao formatar data/hora:", e);
+    console.warn(`⚠️ Tipo não reconhecido em formatarDataHora: "${tipo}"`);
     return '';
   }
 }
