@@ -503,31 +503,33 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'VerificarListaConvenios') {
-      const queryText = queryResult?.queryText || '';
-      const convenioInformadoRaw = parameters?.convenio || queryText;
-      const convenioNormalizado = normalize(convenioInformadoRaw);
+  const queryText = queryResult?.queryText || '';
+  const convenioInformadoRaw = parameters?.convenio || queryText;
+  const convenioNormalizado = normalize(convenioInformadoRaw);
 
-      const convenioEncontrado = conveniosAceitos.find(c =>
-        convenioNormalizado.includes(normalize(c))
-      );
+  // Verifica se algum convênio da lista contém ou é contido no informado
+  const convenioEncontrado = conveniosAceitos.find(c => {
+    const cNorm = normalize(c);
+    return convenioNormalizado.includes(cNorm) || cNorm.includes(convenioNormalizado);
+  });
 
-      const atende = Boolean(convenioEncontrado);
-      const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+  const atende = Boolean(convenioEncontrado);
+  const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
-      const respostaFinal = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+  const respostaFinal = atende
+    ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
+    : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
-      await sendZapiMessage(respostaFinal);
-      await logToSheet({
-        phone: cleanPhone,
-        message: convenioInformadoRaw,
-        type: 'bot',
-        intent: novaIntent
-      });
+  await sendZapiMessage(respostaFinal);
+  await logToSheet({
+    phone: cleanPhone,
+    message: convenioInformadoRaw,
+    type: 'bot',
+    intent: novaIntent
+  });
 
-      return res.status(200).send("OK");
-    }
+  return res.status(200).send("OK");
+}
 
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
