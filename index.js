@@ -18,7 +18,6 @@ const {
   GOOGLE_SHEETS_ID
 } = process.env;
 
-
 console.log("🧪 Variáveis de ambiente carregadas:", {
   ZAPI_INSTANCE_ID,
   ZAPI_INSTANCE_TOKEN: !!ZAPI_INSTANCE_TOKEN,
@@ -503,33 +502,40 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'VerificarListaConvenios') {
-  const queryText = queryResult?.queryText || '';
-  const convenioInformadoRaw = parameters?.convenio || queryText;
-  const convenioNormalizado = normalize(convenioInformadoRaw);
+      const queryText = queryResult?.queryText || '';
+      const convenioInformadoRaw = parameters?.convenio || queryText;
+      const convenioNormalizado = normalize(convenioInformadoRaw);
 
-  // Verifica se algum convênio da lista contém ou é contido no informado
-  const convenioEncontrado = conveniosAceitos.find(c => {
-    const cNorm = normalize(c);
-    return convenioNormalizado.includes(cNorm) || cNorm.includes(convenioNormalizado);
-  });
+      const convenioEncontrado = conveniosAceitos.find(c => {
+        const cNorm = normalize(c);
+        return convenioNormalizado.includes(cNorm) || cNorm.includes(convenioNormalizado);
+      });
 
-  const atende = Boolean(convenioEncontrado);
-  const novaIntent = atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+      const atende = Boolean(convenioEncontrado);
 
-  const respostaFinal = atende
-    ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`
-    : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+      const respostaFinal = atende
+        ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*. Vamos agendar uma consulta? \n🦷_Digite_: *Sim* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema! \nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
-  await sendZapiMessage(respostaFinal);
-  await logToSheet({
-    phone: cleanPhone,
-    message: convenioInformadoRaw,
-    type: 'bot',
-    intent: novaIntent
-  });
+      await sendZapiMessage(respostaFinal);
 
-  return res.status(200).send("OK");
-}
+      await logToSheet({
+        phone: cleanPhone,
+        message: convenioInformadoRaw,
+        type: 'bot',
+        intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
+      });
+
+      return res.status(200).json({
+        fulfillmentText: respostaFinal,
+        outputContexts: [
+          {
+            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/${atende ? 'aguardando-sim-consulta' : 'aguardando-sim-avaliacao'}`,
+            lifespanCount: 2
+          }
+        ]
+      });
+    }
 
     if (intent === 'FalarComAtendente') {
       await notifyTelegram(cleanPhone, message);
@@ -537,27 +543,24 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    // 🩺 Verifica se a mensagem recebida é um possível convênio digitado diretamente (fallback inteligente)
     const normalizedMessage = normalize(message);
     const convenioEncontradoNoFallback = conveniosAceitos.find(c =>
       normalizedMessage.includes(normalize(c))
     );
 
     if (convenioEncontradoNoFallback) {
-      const respostaConvenio = `✅ Legal! Atendemos o convênio *${convenioEncontradoNoFallback.toUpperCase()}*!\nVamos agendar uma consulta? 🦷\n_Digite_: *Sim* ou _Não_`;
+      const respostaConvenio = `✅ Legal! Atendemos o convênio *${convenioEncontradoNoFallback.toUpperCase()}*! Vamos agendar uma consulta? 🦷 \n_Digite_: *Sim* ou _Não_`;
       await sendZapiMessage(respostaConvenio);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'ConvenioAtendido (fallback)' });
       return res.status(200).send("OK");
     }
 
-    // Se nada foi tratado até aqui, responde o que o Dialogflow sugeriu
     if (reply) {
       await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
     }
 
-    // Default fallback final
     await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: '' });
     return res.status(200).send("Mensagem humana registrada.");
 
