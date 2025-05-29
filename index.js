@@ -562,7 +562,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }
 
       // Se convênio foi detectado
-      const respostaFinal = `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. Vamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`;
+      const respostaFinal = `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`;
       await sendZapiMessage(respostaFinal);
       await logToSheet({
         phone: cleanPhone,
@@ -583,7 +583,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const atende = Boolean(convenioDetectado);
       const resposta = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. Vamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`
+        ? `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`
         : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
       await sendZapiMessage(resposta);
@@ -600,11 +600,47 @@ app.post('/zapi-webhook', async (req, res) => {
       });
     }
 
+    // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
     if (intent && !reply) {
-      const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
-      await sendZapiMessage(respostaPadrao);
-      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'RespostaVazia' });
-      return res.status(200).send("Resposta padrão enviada");
+      const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
+      const falhas = contextoTentativa?.parameters?.falhas || 0;
+
+      if (falhas >= 1) {
+        // Segunda falha: transbordo para atendente
+        await sendZapiMessage('Vou acionar um atendente 👩‍💻 Aguarde só um instante ');
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'transbordo humano',
+          intent: 'FallbackDepoisDeFalha'
+        });
+        return res.status(200).json({
+          fulfillmentText: 'Encaminhando para atendente...',
+          outputContexts: [] // encerra o contexto
+        });
+      } else {
+        // Primeira falha: responde e seta contexto com falhas = 1
+        const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
+        await sendZapiMessage(respostaPadrao);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: 'RespostaVazia'
+        });
+
+        return res.status(200).json({
+          fulfillmentText: respostaPadrao,
+          outputContexts: [{
+            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
+            lifespanCount: 2,
+            parameters: {
+              falhas: 1
+            }
+          }]
+        });
+      }
     }
 
     if (reply) {
