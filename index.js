@@ -366,17 +366,27 @@ function capitalizarNomeCompleto(nome) {
     .join(' ');
 }
 
-// Função para extrair convenio em frases
-function detectarConvenioNaFrase(frase, convenios) {
-  const normalizar = str => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const palavrasFrase = normalizar(frase).split(/\s+/);
+function normalizeFrase(text) {
+  return text
+    .toString()
+    .normalize('NFD') // remove acentos
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, '') // remove pontuações
+    .trim();
+}
 
-  return convenios.find(convenio => {
-    const convenioNorm = normalizar(convenio);
-    return palavrasFrase.some(palavra =>
-      convenioNorm.includes(palavra) || palavra.includes(convenioNorm)
-    );
-  }) || null;
+// Função para extrair convenio em frases
+function detectarConvenioNaFrase(frase, listaConvenios) {
+  const fraseNormalizada = normalizeFrase(frase);
+
+  // Ordena por maior coincidência no texto
+  const convenioEncontrado = listaConvenios.find(convenio => {
+    const convenioNormalizado = normalizeFrase(convenio);
+    return fraseNormalizada.includes(convenioNormalizado);
+  });
+
+  return convenioEncontrado || null;
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
@@ -520,7 +530,7 @@ app.post('/zapi-webhook', async (req, res) => {
       const convenioInformadoRaw = typeof parameters?.convenio === 'object'
         ? parameters.convenio.name || ''
         : parameters?.convenio || '';
-      
+
       // Verifica se algum convênio foi informado na frase ou extraído pelo Dialogflow
       const convenioDetectado =
         detectarConvenioNaFrase(convenioInformadoRaw || queryText, conveniosAceitos);
