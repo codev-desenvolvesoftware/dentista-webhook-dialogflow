@@ -441,7 +441,7 @@ app.post('/zapi-webhook', async (req, res) => {
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
 
-    console.log("🔍 Contextos ativos:", req.body.queryResult.outputContexts);
+    console.log("🔍 Contextos ativos:", queryResult.outputContexts);
     console.log("🧠 Intent recebida:", intent);
     console.log("📦 Parâmetros recebidos:", parameters);
 
