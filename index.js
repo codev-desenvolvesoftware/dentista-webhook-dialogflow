@@ -496,7 +496,7 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    if (intent === 'VerificarListaConvenios') {
+    if (intent === 'AtendeConvenio?') {
       const queryText = queryResult?.queryText || '';
       const convenioInformadoRaw = typeof parameters?.convenio === 'object'
         ? parameters.convenio.name || ''
@@ -508,7 +508,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       if (!isConvenioInformado) {
         //const resposta = `Não consegui identificar o nome do convênio 🧐\nPode me enviar novamente por favor?`;
-        const resposta = `Me diga o nome do seu convênio odontológico que consulto pra você 😉`;
+        const resposta = `Sim, atendemos uma gama de convênios! ⭐\nMe diga o nome do seu convênio odontológico que consulto pra você 😉`;
         await sendZapiMessage(resposta);
         await logToSheet({
           phone: cleanPhone,
