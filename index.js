@@ -503,7 +503,10 @@ app.post('/zapi-webhook', async (req, res) => {
         : parameters?.convenio || '';
       const convenioNormalizado = normalize(convenioInformadoRaw);
 
-      if (!convenioInformadoRaw || convenioNormalizado.length < 3) {
+      // Verifica se o convênio foi informado de fato
+  const isConvenioInformado = convenioInformadoRaw && convenioNormalizado.length >= 3;
+
+      if (!isConvenioInformado) {
         //const resposta = `Não consegui identificar o nome do convênio 🧐\nPode me enviar novamente por favor?`;
         const resposta = `Me diga o nome do seu convênio odontológico que consulto pra você 😉`;
         await sendZapiMessage(resposta);
@@ -511,15 +514,16 @@ app.post('/zapi-webhook', async (req, res) => {
           phone: cleanPhone,
           message: convenioInformadoRaw || queryText,
           type: 'bot',
-          intent: 'VerificarListaConvenios'
+          intent: 'VerificarListaConvenios - convênio não informado'
         });
 
         return res.status(200).json({
           fulfillmentText: resposta,
           outputContexts: [{ name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-nome-convenio`, lifespanCount: 2 }]
         });
-      }
+      }      
 
+      // Caso o convênio tenha sido informado corretamente, segue verificação
       const convenioEncontrado = conveniosAceitos.find(c => {
         const cNorm = normalize(c);
         return convenioNormalizado.includes(cNorm) || cNorm.includes(convenioNormalizado);
