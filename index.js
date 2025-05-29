@@ -504,7 +504,7 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'VerificarListaConvenios') {
       const queryText = queryResult?.queryText || '';
       const convenioInformadoRaw = parameters?.convenio || queryText;
-      const convenioNormalizado = normalize(convenioInformadoRaw);
+      const convenioNormalizado = normalize(convenioInformadoRaw || '');
 
       const convenioEncontrado = conveniosAceitos.find(c => {
         const cNorm = normalize(c);
@@ -543,25 +543,46 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    const normalizedMessage = normalize(message);
-    const convenioEncontradoNoFallback = conveniosAceitos.find(c =>
-      normalizedMessage.includes(normalize(c))
-    );
+    // 🎯 Fallback inteligente para nome de convênio
+    if (queryResult?.outputContexts?.some(ctx => ctx.name.includes('aguardando-nome-convenio'))) {
+      const convenioFallback = normalize(message);
+      const convenioEncontrado = conveniosAceitos.find(c =>
+        normalize(c).includes(convenioFallback) || convenioFallback.includes(normalize(c))
+      );
 
-    if (convenioEncontradoNoFallback) {
-      const respostaConvenio = `✅ Legal! Atendemos o convênio *${convenioEncontradoNoFallback.toUpperCase()}*! Vamos agendar uma consulta? 🦷 \n_Digite_: *Sim* ou _Não_`;
-      await sendZapiMessage(respostaConvenio);
-      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'ConvenioAtendido (fallback)' });
-      return res.status(200).send("OK");
+      const atende = Boolean(convenioEncontrado);
+      const resposta = atende
+        ? `✅ Legal! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*. Vamos agendar uma consulta?\n🦷 _Digite_: *Sim* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+
+      await sendZapiMessage(resposta);
+      await logToSheet({
+        phone: cleanPhone,
+        message,
+        type: 'bot',
+        intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
+      });
+
+      return res.status(200).json({
+        fulfillmentText: resposta,
+        outputContexts: [
+          {
+            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/${atende ? 'aguardando-sim-consulta' : 'aguardando-sim-avaliacao'}`,
+            lifespanCount: 2
+          }
+        ]
+      });
     }
 
+    // Se nada foi tratado até aqui, responde o que o Dialogflow sugeriu
     if (reply) {
       await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
     }
 
-    await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: '' });
+    // Default fallback final
+    await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
     return res.status(200).send("Mensagem humana registrada.");
 
   } catch (err) {
