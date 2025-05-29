@@ -434,6 +434,9 @@ app.post('/zapi-webhook', async (req, res) => {
       });
     };
 
+    const ctxConsulta = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-consulta`;
+    const ctxAvaliacao = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-avaliacao`;
+
     const handleAgendamento = async (tipoAgendamento) => {
       try {
         const fallback = extractFallbackFields(message);
@@ -476,15 +479,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
-        await logToAgendamentosSheet({
-          nome: nomeFormatado,
-          telefone: cleanPhone,
-          tipoAgendamento,
-          data,
-          hora,
-          procedimento
-        });
-
+        await logToAgendamentosSheet({ nome: nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
         await sendZapiMessage(respostaFinal);
       } catch (err) {
         console.error("❌ Erro no agendamento:", err.message);
@@ -503,8 +498,27 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'VerificarListaConvenios') {
       const queryText = queryResult?.queryText || '';
-      const convenioInformadoRaw = parameters?.convenio || queryText;
-      const convenioNormalizado = normalize(convenioInformadoRaw || '');
+      const convenioInformadoRaw = typeof parameters?.convenio === 'object'
+        ? parameters.convenio.name || ''
+        : parameters?.convenio || '';
+      const convenioNormalizado = normalize(convenioInformadoRaw);
+
+      if (!convenioInformadoRaw || convenioNormalizado.length < 3) {
+        //const resposta = `Não consegui identificar o nome do convênio 🧐\nPode me enviar novamente por favor?`;
+        const resposta = `Me diga o nome do seu convênio odontológico que consulto pra você 😉`;
+        await sendZapiMessage(resposta);
+        await logToSheet({
+          phone: cleanPhone,
+          message: convenioInformadoRaw || queryText,
+          type: 'bot',
+          intent: 'VerificarListaConvenios'
+        });
+
+        return res.status(200).json({
+          fulfillmentText: resposta,
+          outputContexts: [{ name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-nome-convenio`, lifespanCount: 2 }]
+        });
+      }
 
       const convenioEncontrado = conveniosAceitos.find(c => {
         const cNorm = normalize(c);
@@ -512,28 +526,21 @@ app.post('/zapi-webhook', async (req, res) => {
       });
 
       const atende = Boolean(convenioEncontrado);
-
       const respostaFinal = atende
         ? `✅ Maravilha! Atendemos o convênio *${convenioEncontrado.toUpperCase()}*. Vamos agendar uma consulta? \n🦷_Digite_: *Sim* ou _Não_`
         : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema! \nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
       await sendZapiMessage(respostaFinal);
-
       await logToSheet({
         phone: cleanPhone,
-        message: convenioInformadoRaw,
+        message: convenioInformadoRaw || queryText,
         type: 'bot',
         intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
       });
-
+      
       return res.status(200).json({
         fulfillmentText: respostaFinal,
-        outputContexts: [
-          {
-            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/${atende ? 'aguardando-sim-consulta' : 'aguardando-sim-avaliacao'}`,
-            lifespanCount: 2
-          }
-        ]
+        outputContexts: [{ name: atende ? ctxConsulta : ctxAvaliacao, lifespanCount: 2 }]
       });
     }
 
@@ -543,7 +550,6 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    // 🎯 Fallback inteligente para nome de convênio
     if (queryResult?.outputContexts?.some(ctx => ctx.name.includes('aguardando-nome-convenio'))) {
       const convenioFallback = normalize(message);
       const convenioEncontrado = conveniosAceitos.find(c =>
@@ -556,32 +562,27 @@ app.post('/zapi-webhook', async (req, res) => {
         : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
 
       await sendZapiMessage(resposta);
-      await logToSheet({
-        phone: cleanPhone,
-        message,
-        type: 'bot',
-        intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
-      });
+      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido' });
 
       return res.status(200).json({
         fulfillmentText: resposta,
-        outputContexts: [
-          {
-            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/${atende ? 'aguardando-sim-consulta' : 'aguardando-sim-avaliacao'}`,
-            lifespanCount: 2
-          }
-        ]
+        outputContexts: [{ name: atende ? ctxConsulta : ctxAvaliacao, lifespanCount: 2 }]
       });
     }
 
-    // Se nada foi tratado até aqui, responde o que o Dialogflow sugeriu
+    if (intent && !reply) {
+      const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
+      await sendZapiMessage(respostaPadrao);
+      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent: 'RespostaVazia' });
+      return res.status(200).send("Resposta padrão enviada");
+    }
+
     if (reply) {
       await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
     }
 
-    // Default fallback final
     await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
     return res.status(200).send("Mensagem humana registrada.");
 
