@@ -366,27 +366,23 @@ function capitalizarNomeCompleto(nome) {
     .join(' ');
 }
 
-function normalizeFrase(text) {
-  return text
-    .toString()
-    .normalize('NFD') // remove acentos
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/gi, '') // remove pontuações
-    .trim();
-}
-
 // Função para extrair convenio em frases
-function detectarConvenioNaFrase(frase, listaConvenios) {
-  const fraseNormalizada = normalizeFrase(frase);
+function detectarConvenioNaFrase(texto, listaConvenios) {
+  const normalizar = (str) =>
+    str.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9 ]/g, '')
+      .trim();
 
-  // Ordena por maior coincidência no texto
-  const convenioEncontrado = listaConvenios.find(convenio => {
-    const convenioNormalizado = normalizeFrase(convenio);
-    return fraseNormalizada.includes(convenioNormalizado);
-  });
+  const textoNormalizado = normalizar(texto);
 
-  return convenioEncontrado || null;
+  for (const convenio of listaConvenios) {
+    if (textoNormalizado.includes(normalizar(convenio))) {
+      return convenio;
+    }
+  }
+  return null;
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
@@ -527,9 +523,20 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'AtendeConvenio?') {
       const queryText = queryResult?.queryText || '';
-      const convenioInformadoRaw = typeof parameters?.convenio === 'object'
-        ? parameters.convenio.name || ''
-        : parameters?.convenio || '';
+      let convenioInformadoRaw = '';
+
+      if (parameters?.convenio) {
+        if (typeof parameters.convenio === 'object') {
+          convenioInformadoRaw = parameters.convenio.name || parameters.convenio || '';
+        } else {
+          convenioInformadoRaw = parameters.convenio;
+        }
+      }
+
+      // fallback: se ainda estiver vazio, usa o texto digitado diretamente
+      if (!convenioInformadoRaw) {
+        convenioInformadoRaw = queryText;
+      }
 
       // Verifica se algum convênio foi informado na frase ou extraído pelo Dialogflow
       const convenioDetectado =
