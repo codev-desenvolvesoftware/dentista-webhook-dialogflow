@@ -548,14 +548,28 @@ app.post('/zapi-webhook', async (req, res) => {
       const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
 
       if (ctxConfirmacao) {
-        const convenioInformado =
-          parameters?.convenio_aceito?.name ||
-          parameters?.convenio_aceito ||
-          parameters?.convenio?.name ||
-          parameters?.convenio ||
-          message;
+        // Normalize a mensagem do usuário
+        const messageNormalized = normalize(message);
 
-        const textoConvenio = typeof convenioInformado === 'string' ? convenioInformado : JSON.stringify(convenioInformado);
+        // Tentativa de obter o convênio informado via parâmetros
+        let convenioInformado =
+          parameters?.convenio_aceito ||
+          parameters?.convenio;
+
+        // Fallback se parameters estiverem vazios ou for um objeto vazio
+        if (
+          !convenioInformado ||
+          (typeof convenioInformado === 'object' && Object.keys(convenioInformado).length === 0)
+        ) {
+          convenioInformado = detectarConvenioNaFrase(messageNormalized, conveniosAceitos);
+        }
+
+        // Normaliza o valor final do convênio informado
+        const textoConvenio = typeof convenioInformado === 'string'
+          ? normalize(convenioInformado)
+          : normalize(JSON.stringify(convenioInformado));
+
+        // Detecta se é um convênio aceito
         const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
         const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
@@ -569,7 +583,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
         return res.status(200).json({
           followupEventInput: {
-            name: followup,  // 'ConvenioAtendido' ou 'ConvenioNaoAtendido'
+            name: followup,
             languageCode: "pt-BR",
             parameters: {
               convenio: convenioDetectado || ''
@@ -603,7 +617,7 @@ app.post('/zapi-webhook', async (req, res) => {
         fulfillmentText: resposta,
         outputContexts: [{
           name: atende ? ctxConsulta : ctxAvaliacao,
-          lifespanCount: 2
+          lifespanCount: 1
         },
         {
           name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-nome-convenio`,
@@ -646,7 +660,7 @@ app.post('/zapi-webhook', async (req, res) => {
           fulfillmentText: respostaPadrao,
           outputContexts: [{
             name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
-            lifespanCount: 2,
+            lifespanCount: 1,
             parameters: {
               falhas: 1
             }
