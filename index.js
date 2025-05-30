@@ -548,8 +548,15 @@ app.post('/zapi-webhook', async (req, res) => {
       const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
 
       if (ctxConfirmacao) {
-        const convenioInformado = parameters?.convenio?.name || parameters?.convenio || message;
-        const convenioDetectado = detectarConvenioNaFrase(convenioInformado, conveniosAceitos);
+        const convenioInformado =
+          parameters?.convenio_aceito?.name ||
+          parameters?.convenio_aceito ||
+          parameters?.convenio?.name ||
+          parameters?.convenio ||
+          message;
+          
+        const textoConvenio = typeof convenioInformado === 'string' ? convenioInformado : JSON.stringify(convenioInformado);
+        const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
         const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
