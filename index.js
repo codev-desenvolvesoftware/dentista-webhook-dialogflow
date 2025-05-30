@@ -378,12 +378,20 @@ function detectarConvenioNaFrase(frase, listaConvenios) {
   const normalizadaFrase = normalizar(frase);
 
   console.log("🔎 Buscando convênio:", normalizadaFrase);
-  listaConvenios.forEach(conv => console.log("-", normalizar(conv)));
 
-  return listaConvenios.find((convenio) => {
-    const conv = normalizar(convenio);
-    return normalizadaFrase.includes(conv) || conv.includes(normalizadaFrase);
-  });
+  // Mapeia lista com objetos { original, normalizado }
+  const listaNormalizada = listaConvenios.map(c => ({
+    original: c,
+    normalizado: normalizar(c)
+  }));
+
+  listaNormalizada.forEach(c => console.log("-", c.normalizado));
+
+  const detectado = listaNormalizada.find(({ normalizado }) =>
+    normalizadaFrase.includes(normalizado) || normalizado.includes(normalizadaFrase)
+  );
+
+  return detectado?.original; // retorna o nome original do convênio, se encontrado
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
