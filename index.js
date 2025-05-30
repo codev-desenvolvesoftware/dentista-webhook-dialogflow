@@ -508,6 +508,26 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     };
 
+    // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
+    if (normalize(message) === 'sim') {
+      const contextNames = queryResult.outputContexts?.map(c => c.name) || [];
+
+      const inConsultaContext = contextNames.some(name => name.includes('aguardando-sim-consulta'));
+      const inAvaliacaoContext = contextNames.some(name => name.includes('aguardando-sim-avaliacao'));
+
+      if (inConsultaContext) {
+        console.log('📌 Direcionando para AgendarConsultaFinal');
+        await handleAgendamento('consulta');
+        return res.status(200).send("Agendamento de consulta realizado");
+      }
+
+      if (inAvaliacaoContext) {
+        console.log('📌 Direcionando para AgendarAvaliacaoFinal');
+        await handleAgendamento('avaliação');
+        return res.status(200).send("Agendamento de avaliação realizado");
+      }
+    }
+
     if (intent === 'AgendarAvaliacaoFinal') {
       await handleAgendamento('avaliação');
       return res.status(200).send("OK");
