@@ -438,6 +438,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const queryResult = dialogflowResponse.data.queryResult;
     const reply = queryResult?.fulfillmentText?.trim();
+    console.log("🤖 Resposta do bot:", reply);
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
 
@@ -543,6 +544,7 @@ app.post('/zapi-webhook', async (req, res) => {
       const convenioDetectado =
         detectarConvenioNaFrase(convenioInformadoRaw || queryText, conveniosAceitos);
 
+      // Se convênio NÃO foi detectado
       if (!convenioDetectado) {
         const resposta = `Sim, atendemos uma gama de convênios! ⭐\nMe diga o nome do seu convênio odontológico que consulto pra você 😉`;
         await sendZapiMessage(resposta);
@@ -601,6 +603,51 @@ app.post('/zapi-webhook', async (req, res) => {
       });
     }
 
+    if (intent === 'VerificarListaConvenios') {
+      const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
+
+      if (ctxConfirmacao) {
+        const convenioInformado = parameters?.convenio?.name || parameters?.convenio || message;
+        const convenioDetectado = detectarConvenioNaFrase(convenioInformado, conveniosAceitos);
+
+        if (convenioDetectado) {
+          const resposta = `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`;
+          await sendZapiMessage(resposta);
+          await logToSheet({
+            phone: cleanPhone,
+            message,
+            type: 'bot',
+            intent: 'ConvenioAtendido (confirmado)'
+          });
+
+          return res.status(200).json({
+            fulfillmentText: resposta,
+            outputContexts: [{
+              name: ctxConsulta,
+              lifespanCount: 2
+            }]
+          });
+        } else {
+          const resposta = `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+          await sendZapiMessage(resposta);
+          await logToSheet({
+            phone: cleanPhone,
+            message,
+            type: 'bot',
+            intent: 'ConvenioNaoAtendido (confirmado)'
+          });
+
+          return res.status(200).json({
+            fulfillmentText: resposta,
+            outputContexts: [{
+              name: ctxAvaliacao,
+              lifespanCount: 2
+            }]
+          });
+        }
+      }
+    }
+
     // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
     if (intent && !reply) {
       const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
@@ -648,6 +695,8 @@ app.post('/zapi-webhook', async (req, res) => {
       await sendZapiMessage(reply);
       await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
       return res.status(200).send("OK");
+    } else {
+      console.warn("⚠️ Nenhuma resposta definida para a intent.");
     }
 
     await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
