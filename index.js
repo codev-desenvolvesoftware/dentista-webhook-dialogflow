@@ -473,63 +473,70 @@ app.post('/zapi-webhook', async (req, res) => {
     const handleAgendamento = async (tipoAgendamento) => {
       try {
         const fallback = extractFallbackFields(message);
+        const rawMessage = message?.text?.message || '';
 
-        let nomeRaw;
-        if (parameters?.nome?.name) {
-          nomeRaw = parameters.nome.name;
-        } else if (Array.isArray(parameters?.nome)) {
-          nomeRaw = parameters.nome.join(' ');
-        } else {
-          nomeRaw = parameters?.nome;
-        }
+        // 🧠 Nome
+        const nomeRaw = parameters?.nome?.name
+          || (Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome)
+          || fallback.nome
+          || 'Cliente';
 
-        function limitarNome(nome) {
-          return nome.trim().split(/\s+/).slice(0, 4).join(' ');
-        }
-        const nomeFinal = nomeRaw || fallback.nome || 'Cliente';
-        const nomeLimitado = limitarNome(nomeFinal);
+        const nomeLimitado = nomeRaw.trim().split(/\s+/).slice(0, 4).join(' ');
         const nomeFormatado = capitalizarNomeCompleto(nomeLimitado);
         console.log('🔍 nomeFormatado:', nomeFormatado);
 
+        // 🧠 Procedimento
         const procedimentoRaw = Array.isArray(parameters?.procedimento)
           ? parameters.procedimento.join(' ')
           : parameters?.procedimento;
-
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
-        let data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
-        let hora = ''; // Começa vazio
-        const rawMessage = message?.text?.message || '';
+        // 📅 Data
+        const data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
-        // 1. Tenta extrair da mensagem do usuário: ex: "10h", "14:30"
-        const matchHoraTexto = rawMessage.match(/\b(\d{1,2})[:h](\d{2})\b/i);
-        if (matchHoraTexto) {
-          const horaBruta = `${matchHoraTexto[1]}:${matchHoraTexto[2]}`;
-          const horaExtraidaTexto = formatarDataHora(horaBruta, 'hora');
-          if (horaExtraidaTexto && horaExtraidaTexto !== 'Hora inválida') {
-            console.log('🛠️ Usando hora do texto da mensagem:', horaExtraidaTexto);
-            hora = horaExtraidaTexto;
+        // ⏰ Hora
+        let hora = '';
+
+        function tentarExtrairHora(...fontes) {
+          for (const fonte of fontes) {
+            if (!fonte) continue;
+            const tentativa = formatarDataHora(fonte, 'hora');
+            if (tentativa && tentativa !== 'Hora inválida') {
+              console.log('🛠️ Hora obtida de fonte:', fonte);
+              return tentativa;
+            }
           }
+          return '';
         }
-        // 2. Se não conseguiu extrair do texto, tenta pegar do fallback
-        if (!hora && fallback.hora) {
-          console.log('🛠️ Usando hora do fallback:', fallback.hora);
-          hora = fallback.hora;
-        }
-        // 3. Se ainda não tem hora, pega dos parâmetros do Dialogflow
-        if (!hora) {
-          hora = formatarDataHora(parameters?.hora, 'hora');
-          console.log('🛠️ Usando hora dos parâmetros Dialogflow:', hora);
-        }
+
+        // Ordem de prioridade: texto → fallback.hora → parameters.hora.original → parameters.hora
+        const matchTexto = rawMessage.match(/\b(\d{1,2})[:h](\d{2})\b/i);
+        const horaTexto = matchTexto ? `${matchTexto[1]}:${matchTexto[2]}` : '';
+
+        hora = tentarExtrairHora(
+          horaTexto,
+          fallback.hora,
+          parameters?.['hora.original'],
+          parameters?.hora
+        );
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
-        await logToAgendamentosSheet({ nome: nomeFormatado, telefone: cleanPhone, tipoAgendamento, data, hora, procedimento });
+        await logToAgendamentosSheet({
+          nome: nomeFormatado,
+          telefone: cleanPhone,
+          tipoAgendamento,
+          data,
+          hora,
+          procedimento
+        });
+
         await sendZapiMessage(respostaFinal);
       } catch (err) {
         console.error("❌ Erro no agendamento:", err.message);
       }
     };
+
 
     // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
     if (normalize(message) === 'sim') {
