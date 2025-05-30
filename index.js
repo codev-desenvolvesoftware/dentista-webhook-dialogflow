@@ -246,13 +246,9 @@ function formatarDataHora(valor, tipo) {
       if (/^\d{4}-\d{2}-\d{2}t\d{1,2}:\d{2}/i.test(valorLimpo)) {
         const data = new Date(valorLimpo);
         if (!isNaN(data.getTime())) {
-          const horaLocal = data.toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZone: 'America/Sao_Paulo'
-          });
-          return horaLocal;
+          const horas = data.getHours().toString().padStart(2, '0');
+          const minutos = data.getMinutes().toString().padStart(2, '0');
+          return `${horas}:${minutos}`;
         }
         return 'Hora inválida';
       }
@@ -502,20 +498,28 @@ app.post('/zapi-webhook', async (req, res) => {
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
         let data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
-        let hora = fallback.hora;
-        if (!hora || hora === '') {
-          hora = formatarDataHora(parameters?.hora, 'hora');
-        }
+        let hora = ''; // Começa vazio
         const rawMessage = message?.text?.message || '';
+
+        // 1. Tenta extrair da mensagem do usuário: ex: "10h", "14:30"
         const matchHoraTexto = rawMessage.match(/\b(\d{1,2})[:h](\d{2})\b/i);
         if (matchHoraTexto) {
           const horaBruta = `${matchHoraTexto[1]}:${matchHoraTexto[2]}`;
           const horaExtraidaTexto = formatarDataHora(horaBruta, 'hora');
-
           if (horaExtraidaTexto && horaExtraidaTexto !== 'Hora inválida') {
-            console.log('🛠️ Sobrescrevendo hora com base no texto da mensagem:', horaExtraidaTexto);
+            console.log('🛠️ Usando hora do texto da mensagem:', horaExtraidaTexto);
             hora = horaExtraidaTexto;
           }
+        }
+        // 2. Se não conseguiu extrair do texto, tenta pegar do fallback
+        if (!hora && fallback.hora) {
+          console.log('🛠️ Usando hora do fallback:', fallback.hora);
+          hora = fallback.hora;
+        }
+        // 3. Se ainda não tem hora, pega dos parâmetros do Dialogflow
+        if (!hora) {
+          hora = formatarDataHora(parameters?.hora, 'hora');
+          console.log('🛠️ Usando hora dos parâmetros Dialogflow:', hora);
         }
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
