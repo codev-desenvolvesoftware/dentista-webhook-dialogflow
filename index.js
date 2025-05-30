@@ -175,7 +175,7 @@ function extractFallbackFields(message) {
   const rawText = message?.text?.message || '';
   const texto = rawText.replace(/\s+/g, ' ').trim();
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /\b(\d{1,2})\s*[h:]\s*(\d{0,2})\b/;
+  const horaRegex = /\b(\d{1,2})(?:[:h](\d{2}))?\b/;
 
   let nome = '';
   let data = '';
@@ -222,121 +222,36 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
-  if (typeof valor !== 'string') return '';
+  if (!valor) return tipo === 'data' ? 'Data inválida' : 'Hora inválida';
 
-  // Remover caracteres invisíveis e espaços
-  valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  // LIMPA a entrada para capturar "8h", "08h", "8:00", "08:00", "8", "8h00", etc
+  const horaRegex = /\b(\d{1,2})(?:[:h](\d{2}))?\b/;
 
-  if (valor === '') {
-    return tipo === 'data' ? 'Data inválida' : '';
-  }
+  if (tipo === 'hora') {
+    const match = valor.match(horaRegex);
+    if (!match) return 'Hora inválida';
 
-  console.log(`📥 formatarDataHora | tipo: ${tipo} | valor limpo: "${valor}"`);
+    let hora = parseInt(match[1]);
+    let minutos = match[3] ? parseInt(match[3]) : 0;
 
-  try {
-    if (tipo === 'hora') {
-      const valorLimpo = valor
-        .replace(/[^\d\w:h\sT\-:+]/g, '') // manter ISO e h/min
-        .replace(/\s/g, '')
-        .toLowerCase();
-
-      let horas, minutos;
-
-      // Novo: se for timestamp ISO com hora
-      if (/^\d{4}-\d{2}-\d{2}t\d{1,2}:\d{2}/i.test(valorLimpo)) {
-        const data = new Date(valorLimpo);
-        if (!isNaN(data.getTime())) {
-          const horas = data.getHours().toString().padStart(2, '0');
-          const minutos = data.getMinutes().toString().padStart(2, '0');
-          return `${horas}:${minutos}`;
-        }
-        return 'Hora inválida';
-      }
-
-      if (/^\d{1,2}h\d{1,2}$/.test(valorLimpo)) {
-        [horas, minutos] = valorLimpo.split('h');
-      } else if (/^\d{1,2}h$/.test(valorLimpo)) {
-        horas = valorLimpo.replace('h', '');
-        minutos = '00';
-      } else if (/^\d{1,2}:\d{1,2}h$/.test(valorLimpo)) {
-        [horas, minutos] = valorLimpo.replace('h', '').split(':');
-      } else if (/^\d{1,2}:\d{1,2}$/.test(valorLimpo)) {
-        [horas, minutos] = valorLimpo.split(':');
-      } else if (/^\d{4}$/.test(valorLimpo)) {
-        horas = valorLimpo.slice(0, 2);
-        minutos = valorLimpo.slice(2);
-      } else if (/^\d{1,2}$/.test(valorLimpo)) {
-        horas = valorLimpo;
-        minutos = '00';
-      } else if (/\d{4}-\d{2}-\d{2}t\d{1,2}:\d{2}/i.test(valorLimpo)) {
-        const dateFromISO = new Date(valorLimpo);
-        if (!isNaN(dateFromISO.getTime())) {
-          const horaLocal = dateFromISO.toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZone: 'America/Sao_Paulo'
-          });
-          return horaLocal;
-        }
-        return 'Hora inválida';
-      } else {
-        return 'Hora inválida';
-      }
-
-      horas = horas.padStart(2, '0');
-      minutos = minutos.padStart(2, '0');
-
-      return `${horas}:${minutos}`;
+    // CORRIGE casos como "8h" sendo interpretados como 20h
+    if (hora >= 0 && hora <= 23 && minutos >= 0 && minutos <= 59) {
+      // Garante formatação 2 dígitos
+      const horaStr = hora.toString().padStart(2, '0');
+      const minStr = minutos.toString().padStart(2, '0');
+      return `${horaStr}:${minStr}`;
     }
 
-    if (tipo === 'data') {
-      const isoLike = /^\d{4}-\d{2}-\d{2}$/;
-      const slashFormat = /^\d{2}\/\d{2}\/\d{4}$/;
-      const dashUSFormat = /^\d{2}-\d{2}-\d{4}$/;
-      const slashYearFirst = /^\d{4}\/\d{2}\/\d{2}$/;
-
-      let dateObj;
-
-      if (isoLike.test(valor)) {
-        const [ano, mes, dia] = valor.split('-').map(Number);
-        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
-        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-      } else if (slashFormat.test(valor)) {
-        const [dia, mes, ano] = valor.split('/').map(Number);
-        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
-        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-      } else if (dashUSFormat.test(valor)) {
-        const [mes, dia, ano] = valor.split('-').map(Number);
-        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
-        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-      } else if (slashYearFirst.test(valor)) {
-        const [ano, mes, dia] = valor.split('/').map(Number);
-        if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
-        dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-      } else {
-        // Verificação extra: impedir que datas truncadas tipo "2025-05" sejam válidas
-        if (/^\d{4}-\d{2}$/.test(valor) || /^\d{4}$/.test(valor)) {
-          return 'Data inválida';
-        }
-        dateObj = new Date(valor);
-      }
-
-      if (isNaN(dateObj.getTime())) return 'Data inválida';
-
-      const dia = dateObj.getUTCDate().toString().padStart(2, '0');
-      const mes = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
-      const ano = dateObj.getUTCFullYear();
-
-      return `${dia}/${mes}/${ano}`;
-    }
-
-    return '';
-  } catch (e) {
-    console.error("❌ Erro ao formatar data/hora:", e);
-    console.warn(`⚠️ Tipo não reconhecido em formatarDataHora: "${tipo}"`);
-    return '';
+    return 'Hora inválida';
   }
+
+  if (tipo === 'data') {
+    const date = new Date(valor);
+    if (isNaN(date.getTime())) return 'Data inválida';
+    return date.toLocaleDateString('pt-BR');
+  }
+
+  return '';
 }
 
 // Função para capitalizar a primeira letra de cada palavra
@@ -510,8 +425,11 @@ app.post('/zapi-webhook', async (req, res) => {
         }
 
         // Ordem de prioridade: texto → fallback.hora → parameters.hora.original → parameters.hora
-        const matchTexto = rawMessage.match(/\b(\d{1,2})[:h](\d{2})\b/i);
-        const horaTexto = matchTexto ? `${matchTexto[1]}:${matchTexto[2]}` : '';
+        // Isso cobre "8", "8h", "8:00", "08h", etc.
+        const matchTexto = rawMessage.match(/\b(\d{1,2})([:h]?)(\d{0,2})\b/i);
+        const horaTexto = matchTexto
+          ? `${matchTexto[1]}:${matchTexto[3] || '00'}`
+          : '';
 
         hora = tentarExtrairHora(
           horaTexto,
