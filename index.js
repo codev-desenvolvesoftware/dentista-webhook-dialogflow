@@ -573,9 +573,14 @@ app.post('/zapi-webhook', async (req, res) => {
         }
 
         // Normaliza o valor final do convênio informado
-        const textoConvenio = typeof convenioInformado === 'string'
-          ? normalize(convenioInformado)
-          : normalize(JSON.stringify(convenioInformado));
+        const convenioTexto =
+          typeof convenioInformado === 'string'
+            ? convenioInformado
+            : typeof convenioInformado?.value === 'string'
+              ? convenioInformado.value
+              : '';
+
+        const textoConvenio = normalize(convenioTexto);
 
         // Detecta se é um convênio aceito
         const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
@@ -589,15 +594,41 @@ app.post('/zapi-webhook', async (req, res) => {
           intent: `${followup} (event redirect)`
         });
 
-        return res.status(200).json({
-          followupEventInput: {
-            name: followup,
-            languageCode: "pt-BR",
-            parameters: {
-              convenio: convenioDetectado || ''
+        // LOGS DE DEPURAÇÃO - CONVÊNIO
+        console.log('🔎 Convênio detectado:', convenioDetectado);
+        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioDetectado || '' });
+        // Envia evento para Dialogflow
+        const followupResponse = await axios.post(
+          `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
+          {
+            queryInput: {
+              event: {
+                name: followup,
+                languageCode: 'pt-BR',
+                parameters: {
+                  convenio: convenioDetectado || ''
+                }
+              }
             }
-          }
+          },
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        const followupText = followupResponse.data.queryResult.fulfillmentText;
+        console.log("🤖 Resposta do evento:", followupText);
+
+        if (followupText) {
+          await sendZapiMessage(followupText);
+        }
+
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: `${followup} (evento disparado)`
         });
+
+        return res.status(200).send("Followup executado");
       }
     }
 
