@@ -394,6 +394,13 @@ function detectarConvenioNaFrase(frase, listaConvenios) {
   return detectado?.original; // retorna o nome original do convênio, se encontrado
 }
 
+// Função para primeira letra maiúscula
+function toTitleCase(str) {
+  return str.replace(/\w\S*/g, (txt) =>
+    txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase()
+  );
+}
+
 // Lê o arquivo convenios.json e armazena os convênios aceitos
 let conveniosAceitos = []; // Agora é mutável
 try {
@@ -495,8 +502,12 @@ app.post('/zapi-webhook', async (req, res) => {
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
         let data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
-        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
-        const matchHoraTexto = message.match(/\b(\d{1,2})[:h](\d{2})\b/i);
+        let hora = fallback.hora;
+        if (!hora || hora === '') {
+          hora = formatarDataHora(parameters?.hora, 'hora');
+        }
+        const rawMessage = message?.text?.message || '';
+        const matchHoraTexto = rawMessage.match(/\b(\d{1,2})[:h](\d{2})\b/i);
         if (matchHoraTexto) {
           const horaBruta = `${matchHoraTexto[1]}:${matchHoraTexto[2]}`;
           const horaExtraidaTexto = formatarDataHora(horaBruta, 'hora');
@@ -587,6 +598,9 @@ app.post('/zapi-webhook', async (req, res) => {
 
         const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
+        // ✅ Formata o nome do convênio com letras maiúsculas
+        const convenioFormatado = toTitleCase(convenioDetectado || '');
+
         await logToSheet({
           phone: cleanPhone,
           message,
@@ -596,8 +610,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // LOGS DE DEPURAÇÃO - CONVÊNIO
         console.log('🔎 Convênio detectado:', convenioDetectado);
-        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioDetectado || '' });
-        // Envia evento para Dialogflow
+        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '' });
+        // Envia evento para Dialogflow com nome capitalizado
         const followupResponse = await axios.post(
           `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
           {
@@ -606,7 +620,7 @@ app.post('/zapi-webhook', async (req, res) => {
                 name: followup,
                 languageCode: 'pt-BR',
                 parameters: {
-                  convenio: convenioDetectado || ''
+                  convenio: convenioFormatado || ''
                 }
               }
             }
