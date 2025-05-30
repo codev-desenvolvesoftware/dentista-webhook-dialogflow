@@ -367,7 +367,7 @@ function capitalizarNomeCompleto(nome) {
 }
 
 // Função para extrair convenio em frases
-function detectarConvenioNaFrase(texto, listaConvenios) {
+function detectarConvenioNaFrase(frase, listaConvenios) {
   const normalizar = (str) =>
     str.toLowerCase()
       .normalize('NFD')
@@ -375,14 +375,15 @@ function detectarConvenioNaFrase(texto, listaConvenios) {
       .replace(/[^a-z0-9 ]/g, '')
       .trim();
 
-  const textoNormalizado = normalizar(texto);
+  const normalizadaFrase = normalizar(frase);
 
-  for (const convenio of listaConvenios) {
-    if (textoNormalizado.includes(normalizar(convenio))) {
-      return convenio;
-    }
-  }
-  return null;
+  console.log("🔎 Buscando convênio:", normalizadaFrase);
+  listaConvenios.forEach(conv => console.log("-", normalizar(conv)));
+
+  return listaConvenios.find((convenio) => {
+    const conv = normalizar(convenio);
+    return normalizadaFrase.includes(conv) || conv.includes(normalizadaFrase);
+  });
 }
 
 // Lê o arquivo convenios.json e armazena os convênios aceitos
