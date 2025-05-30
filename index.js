@@ -554,7 +554,7 @@ app.post('/zapi-webhook', async (req, res) => {
           parameters?.convenio?.name ||
           parameters?.convenio ||
           message;
-          
+
         const textoConvenio = typeof convenioInformado === 'string' ? convenioInformado : JSON.stringify(convenioInformado);
         const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
@@ -577,6 +577,29 @@ app.post('/zapi-webhook', async (req, res) => {
           }
         });
       }
+    }
+
+    // Se está aguardando nome do convênio, aplica a mesma detecção
+    if (queryResult?.outputContexts?.some(ctx => ctx.name.includes('aguardando-nome-convenio'))) {
+      const convenioDetectado = detectarConvenioNaFrase(message, conveniosAceitos);
+
+      const atende = Boolean(convenioDetectado);
+      const resposta = atende
+        ? `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`
+        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
+
+      await sendZapiMessage(resposta);
+      await logToSheet({
+        phone: cleanPhone,
+        message,
+        type: 'bot',
+        intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
+      });
+
+      return res.status(200).json({
+        fulfillmentText: resposta,
+        outputContexts: [{ name: atende ? ctxConsulta : ctxAvaliacao, lifespanCount: 2 }]
+      });
     }
 
     // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
