@@ -431,12 +431,18 @@ app.post('/zapi-webhook', async (req, res) => {
           ? `${matchTexto[1]}:${matchTexto[3] || '00'}`
           : '';
 
-        hora = tentarExtrairHora(
-          horaTexto,
-          fallback.hora,
-          parameters?.['hora.original'],
-          parameters?.hora
-        );
+        // 🔐 Priorizar hora extraída via regex no texto
+        if (horaTexto) {
+          hora = formatarDataHora(horaTexto, 'hora');
+          console.log('🕵️ Hora extraída via texto:', horaTexto, '→', hora);
+        } else {
+          // Se não extrair do texto, tenta as outras fontes
+          hora = tentarExtrairHora(
+            fallback.hora,
+            parameters?.['hora.original'],
+            parameters?.hora
+          );
+        }
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
