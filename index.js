@@ -544,86 +544,6 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("OK");
     }
 
-    if (intent === 'AtendeConvenio?') {
-      const queryText = queryResult?.queryText || '';
-      let convenioInformadoRaw = '';
-
-      if (parameters?.convenio) {
-        if (typeof parameters.convenio === 'object') {
-          convenioInformadoRaw = parameters.convenio.name || parameters.convenio || '';
-        } else {
-          convenioInformadoRaw = parameters.convenio;
-        }
-      }
-
-      // fallback: se ainda estiver vazio, usa o texto digitado diretamente
-      if (!convenioInformadoRaw) {
-        convenioInformadoRaw = queryText;
-      }
-
-      // Verifica se algum convênio foi informado na frase ou extraído pelo Dialogflow
-      const convenioDetectado =
-        detectarConvenioNaFrase(convenioInformadoRaw || queryText, conveniosAceitos);
-
-      // Se convênio NÃO foi detectado
-      if (!convenioDetectado) {
-        const resposta = `Sim, atendemos uma gama de convênios! ⭐\nMe diga o nome do seu convênio odontológico que consulto pra você 😉`;
-        await sendZapiMessage(resposta);
-        await logToSheet({
-          phone: cleanPhone,
-          message: convenioInformadoRaw || queryText,
-          type: 'bot',
-          intent: 'VerificarListaConvenios - convênio não informado'
-        });
-
-        return res.status(200).json({
-          fulfillmentText: resposta,
-          outputContexts: [{
-            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-nome-convenio`,
-            lifespanCount: 2
-          }]
-        });
-      }
-
-      // Se convênio foi detectado
-      const respostaFinal = `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`;
-      await sendZapiMessage(respostaFinal);
-      await logToSheet({
-        phone: cleanPhone,
-        message: convenioInformadoRaw || queryText,
-        type: 'bot',
-        intent: 'ConvenioAtendido'
-      });
-
-      return res.status(200).json({
-        fulfillmentText: respostaFinal,
-        outputContexts: [{ name: ctxConsulta, lifespanCount: 2 }]
-      });
-    }
-
-    // Se está aguardando nome do convênio, aplica a mesma detecção
-    if (queryResult?.outputContexts?.some(ctx => ctx.name.includes('aguardando-nome-convenio'))) {
-      const convenioDetectado = detectarConvenioNaFrase(message, conveniosAceitos);
-
-      const atende = Boolean(convenioDetectado);
-      const resposta = atende
-        ? `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`
-        : `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
-
-      await sendZapiMessage(resposta);
-      await logToSheet({
-        phone: cleanPhone,
-        message,
-        type: 'bot',
-        intent: atende ? 'ConvenioAtendido' : 'ConvenioNaoAtendido'
-      });
-
-      return res.status(200).json({
-        fulfillmentText: resposta,
-        outputContexts: [{ name: atende ? ctxConsulta : ctxAvaliacao, lifespanCount: 2 }]
-      });
-    }
-
     if (intent === 'VerificarListaConvenios') {
       const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
 
@@ -631,41 +551,24 @@ app.post('/zapi-webhook', async (req, res) => {
         const convenioInformado = parameters?.convenio?.name || parameters?.convenio || message;
         const convenioDetectado = detectarConvenioNaFrase(convenioInformado, conveniosAceitos);
 
-        if (convenioDetectado) {
-          const resposta = `✅ Maravilha! Atendemos o convênio *${convenioDetectado.toUpperCase()}*. \nVamos agendar uma consulta 🦷\n_Digite_: *Sim* ou _Não_`;
-          await sendZapiMessage(resposta);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: 'ConvenioAtendido (confirmado)'
-          });
+        const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
-          return res.status(200).json({
-            fulfillmentText: resposta,
-            outputContexts: [{
-              name: ctxConsulta,
-              lifespanCount: 2
-            }]
-          });
-        } else {
-          const resposta = `Humm, não encontrei esse convênio na nossa lista... Mas sem problema!\nPodemos agendar uma avaliação gratuita 🦷\n_Digite_: *Sim* ou _Não_`;
-          await sendZapiMessage(resposta);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: 'ConvenioNaoAtendido (confirmado)'
-          });
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: `${followup} (event redirect)`
+        });
 
-          return res.status(200).json({
-            fulfillmentText: resposta,
-            outputContexts: [{
-              name: ctxAvaliacao,
-              lifespanCount: 2
-            }]
-          });
-        }
+        return res.status(200).json({
+          followupEventInput: {
+            name: followup,  // 'ConvenioAtendido' ou 'ConvenioNaoAtendido'
+            languageCode: "pt-BR",
+            parameters: {
+              convenio: convenioDetectado || ''
+            }
+          }
+        });
       }
     }
 
