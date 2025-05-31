@@ -230,22 +230,21 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
-      // Se for um Date ISO: 2025-05-31T10:00:00-03:00
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor)) {
+      // Se for string ISO com "T", trata como data completa
+      if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(valor)) {
         const date = new Date(valor);
-        if (!isNaN(date.getTime())) {
-          const horas = date.getHours().toString().padStart(2, '0');
-          const minutos = date.getMinutes().toString().padStart(2, '0');
-          return `${horas}:${minutos}`;
-        }
+        // Força o fuso correto, sem converter para UTC
+        const horaFormatada = date.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'America/Sao_Paulo',
+        });
+        return horaFormatada;
       }
 
-      valor = valor
-        .toLowerCase()
-        .replace(/[^\d:a-z]/g, '') // permite números, letras e :
-        .replace(/\s+/g, '');
+      // Caso contrário, trata como hora textual simples
+      valor = valor.toLowerCase().replace(/[^\d:a-z]/g, '').replace(/\s+/g, '');
 
-      // Rejeita se sobrar qualquer letra que não seja 'h'
       if (/[^0-9:h]/.test(valor)) return 'Hora inválida';
 
       const horaRegexes = [
@@ -258,7 +257,6 @@ function formatarDataHora(valor, tipo) {
       ];
 
       let horas, minutos;
-
       for (const regex of horaRegexes) {
         const match = valor.match(regex);
         if (match) {
