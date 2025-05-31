@@ -174,8 +174,9 @@ async function notifyTelegram(phone, message) {
 function extractFallbackFields(message) {
   const rawText = message?.text?.message || '';
   const texto = rawText.replace(/\s+/g, ' ').trim();
+  // Expressões regulares
   const dataRegex = /(\d{1,2})[\/\-](\d{1,2})/;
-  const horaRegex = /\b(\d{1,2})(?:[:h](\d{2}))?\b/;
+  const horaRegex = /\b(\d{1,2})\s*[h:]\s*(\d{0,2})\b/;
 
   let nome = '';
   let data = '';
@@ -222,36 +223,94 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
-  if (!valor) return tipo === 'data' ? 'Data inválida' : 'Hora inválida';
+  if (typeof valor !== 'string') return '';
 
-  // LIMPA a entrada para capturar "8h", "08h", "8:00", "08:00", "8", "8h00", etc
-  const horaRegex = /\b(\d{1,2})(?:[:h](\d{2}))?\b/;
+  valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  if (!valor) return tipo === 'data' ? 'Data inválida' : '';
 
-  if (tipo === 'hora') {
-    const match = valor.match(horaRegex);
-    if (!match) return 'Hora inválida';
+  try {
+    if (tipo === 'hora') {
+      valor = valor
+        .toLowerCase()
+        .replace(/[^\d:a-z]/g, '') // permite números, letras e :
+        .replace(/\s+/g, '');
 
-    let hora = parseInt(match[1]);
-    let minutos = match[3] ? parseInt(match[3]) : 0;
+      // Rejeita se sobrar qualquer letra que não seja 'h'
+      if (/[^0-9:h]/.test(valor)) return 'Hora inválida';
 
-    // CORRIGE casos como "8h" sendo interpretados como 20h
-    if (hora >= 0 && hora <= 23 && minutos >= 0 && minutos <= 59) {
-      // Garante formatação 2 dígitos
-      const horaStr = hora.toString().padStart(2, '0');
-      const minStr = minutos.toString().padStart(2, '0');
-      return `${horaStr}:${minStr}`;
+      const horaRegexes = [
+        /^(\d{1,2})h(\d{1,2})$/,     // 10h30
+        /^(\d{1,2})h$/,              // 10h
+        /^(\d{1,2}):(\d{1,2})$/,     // 10:30
+        /^(\d{1,2}):(\d{1,2})h$/,    // 10:30h
+        /^(\d{2})(\d{2})$/,          // 1130
+        /^(\d{1,2})$/,               // 10
+      ];
+
+      let horas, minutos;
+
+      for (const regex of horaRegexes) {
+        const match = valor.match(regex);
+        if (match) {
+          horas = match[1];
+          minutos = match[2] || '00';
+          break;
+        }
+      }
+
+      if (horas === undefined) return 'Hora inválida';
+      horas = horas.padStart(2, '0');
+      minutos = minutos.padStart(2, '0');
+
+      return `${horas}:${minutos}`;
     }
 
-    return 'Hora inválida';
-  }
+    if (tipo === 'data') {
+      valor = valor.trim();
 
-  if (tipo === 'data') {
-    const date = new Date(valor);
-    if (isNaN(date.getTime())) return 'Data inválida';
-    return date.toLocaleDateString('pt-BR');
-  }
+      const formatos = [
+        { regex: /^\d{4}-\d{2}-\d{2}$/, ordem: ['ano', 'mes', 'dia'] },
+        { regex: /^\d{2}\/\d{2}\/\d{4}$/, ordem: ['dia', 'mes', 'ano'] },
+        { regex: /^\d{2}-\d{2}-\d{4}$/, ordem: ['mes', 'dia', 'ano'] },
+        { regex: /^\d{4}\/\d{2}\/\d{2}$/, ordem: ['ano', 'mes', 'dia'] },
+      ];
 
-  return '';
+      for (const formato of formatos) {
+        if (formato.regex.test(valor)) {
+          const partes = valor.split(/[-/]/).map(Number);
+          const { dia, mes, ano } = {
+            dia: partes[formato.ordem.indexOf('dia')],
+            mes: partes[formato.ordem.indexOf('mes')],
+            ano: partes[formato.ordem.indexOf('ano')],
+          };
+
+          if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
+
+          const dateObj = new Date(Date.UTC(ano, mes - 1, dia));
+          if (isNaN(dateObj.getTime())) return 'Data inválida';
+
+          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+        }
+      }
+
+      // Só aceita ISO 8601 completo com dia, ex: "2025-05-30T12:00:00-03:00"
+      if (!/^\d{4}-\d{2}-\d{2}([T\s].*)?$/.test(valor.trim())) return 'Data inválida';
+
+      const dateObj = new Date(valor);
+      if (isNaN(dateObj.getTime())) return 'Data inválida';
+
+      const dia = dateObj.getUTCDate().toString().padStart(2, '0');
+      const mes = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
+      const ano = dateObj.getUTCFullYear();
+
+      return `${dia}/${mes}/${ano}`;
+    }
+
+    return '';
+  } catch (e) {
+    console.error("❌ Erro ao formatar data/hora:", e);
+    return '';
+  }
 }
 
 // Função para capitalizar a primeira letra de cada palavra
@@ -406,42 +465,13 @@ app.post('/zapi-webhook', async (req, res) => {
           : parameters?.procedimento;
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
 
-        // 📅 Data
+        // 📅 Data/Hora
         const data = formatarDataHora(parameters?.data || fallback.data, 'data');
-
-        // ⏰ Hora
-        let hora = '';
-
-        function tentarExtrairHora(...fontes) {
-          for (const fonte of fontes) {
-            if (!fonte) continue;
-            const tentativa = formatarDataHora(fonte, 'hora');
-            if (tentativa && tentativa !== 'Hora inválida') {
-              console.log('🛠️ Hora obtida de fonte:', fonte);
-              return tentativa;
-            }
-          }
-          return '';
-        }
-
-        // Ordem de prioridade: texto → fallback.hora → parameters.hora.original → parameters.hora
-        // Isso cobre "8", "8h", "8:00", "08h", etc.
-        const matchTexto = rawMessage.match(/\b(\d{1,2})([:h]?)(\d{0,2})\b/i);
-        const horaTexto = matchTexto
-          ? `${matchTexto[1]}:${matchTexto[3] || '00'}`
-          : '';
-
-        // 🔐 Priorizar hora extraída via regex no texto
-        if (horaTexto) {
-          hora = formatarDataHora(horaTexto, 'hora');
-          console.log('🕵️ Hora extraída via texto:', horaTexto, '→', hora);
-        } else {
-          // Se não extrair do texto, tenta as outras fontes
-          hora = tentarExtrairHora(
-            fallback.hora,
-            parameters?.['hora.original'],
-            parameters?.hora
-          );
+        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
+        // Corrige possível divergência da hora extraída do texto
+        const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
+        if (hora === 'Hora inválida' && horaExtraidaTexto && hora !== horaExtraidaTexto) {
+          hora = horaExtraidaTexto;
         }
 
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
