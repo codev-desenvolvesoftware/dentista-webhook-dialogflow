@@ -230,6 +230,16 @@ function formatarDataHora(valor, tipo) {
 
   try {
     if (tipo === 'hora') {
+      // Se for um Date ISO: 2025-05-31T10:00:00-03:00
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(valor)) {
+        const date = new Date(valor);
+        if (!isNaN(date.getTime())) {
+          const horas = date.getHours().toString().padStart(2, '0');
+          const minutos = date.getMinutes().toString().padStart(2, '0');
+          return `${horas}:${minutos}`;
+        }
+      }
+
       valor = valor
         .toLowerCase()
         .replace(/[^\d:a-z]/g, '') // permite números, letras e :
@@ -467,7 +477,10 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 📅 Data/Hora
         const data = formatarDataHora(parameters?.data || fallback.data, 'data');
-        let hora = formatarDataHora(parameters?.hora || fallback.hora, 'hora');
+        let hora = formatarDataHora(
+          String(parameters?.hora || '') || fallback.hora,
+          'hora'
+        );
         // Corrige possível divergência da hora extraída do texto
         const horaExtraidaTexto = formatarDataHora(fallback.hora, 'hora');
         if (hora === 'Hora inválida' && horaExtraidaTexto && hora !== horaExtraidaTexto) {
