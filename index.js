@@ -366,7 +366,7 @@ function detectarConvenioNaFrase(frase, listaConvenios) {
   listaNormalizada.forEach(c => console.log("-", c.normalizado));
 
   const detectado = listaNormalizada.find(({ normalizado }) =>
-    normalizadaFrase.includes(normalizado) || normalizado.includes(normalizadaFrase)
+    normalizadaFrase.includes(normalizado)
   );
 
   return detectado?.original; // retorna o nome original do convênio, se encontrado
