@@ -580,12 +580,42 @@ app.post('/zapi-webhook', async (req, res) => {
 
         const textoConvenio = normalize(convenioTexto);
 
-        // Detecta se é um convênio aceito
+        // Detecta se é ou não um convênio aceito
         const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
+        // ⛔️ Se não encontrou convênio válido, dispara evento ConvenioNaoAtendido
+        if (!convenioDetectado) {
+          console.log('❌ Nenhum convênio detectado. Disparando evento ConvenioNaoAtendido');
+          await logToSheet({
+            phone: cleanPhone,
+            message,
+            type: 'bot',
+            intent: `ConvenioNaoAtendido (evento disparado)`
+          });
+          const naoAtendidoResponse = await axios.post(
+            `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
+            {
+              queryInput: {
+                event: {
+                  name: 'ConvenioNaoAtendido',
+                  languageCode: 'pt-BR'
+                }
+              }
+            },
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          const followupText = naoAtendidoResponse.data.queryResult.fulfillmentText;
+          console.log("🤖 Resposta do evento (NaoAtendido):", followupText);
+          if (followupText) {
+            await sendZapiMessage(followupText);
+          }
+          return res.status(200).send("Evento ConvenioNaoAtendido disparado");
+        }
+
+        // 🟢 Se chegou aqui, convênio foi identificado — segue fluxo normal:
         const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
-        // ✅ Formata o nome do convênio com letras maiúsculas
+        // Formata o nome do convênio com letras maiúsculas
         const convenioFormatado = toTitleCase(convenioDetectado || '');
 
         await logToSheet({
