@@ -597,19 +597,20 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // LOGS DE DEPURAÇÃO - CONVÊNIO
         console.log('🔎 Convênio detectado:', convenioDetectado);
-        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '' });
+        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '[nenhum parâmetro]' });
+
+        const eventPayload = {
+          name: followup,
+          languageCode: 'pt-BR',
+          ...(convenioDetectado && { parameters: { convenio: convenioFormatado } }) // só adiciona se existir
+        };
+
         // Envia evento para Dialogflow com nome capitalizado
         const followupResponse = await axios.post(
           `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
           {
             queryInput: {
-              event: {
-                name: followup,
-                languageCode: 'pt-BR',
-                parameters: {
-                  convenio: convenioFormatado || ''
-                }
-              }
+              event: eventPayload
             }
           },
           { headers: { Authorization: `Bearer ${accessToken}` } }
