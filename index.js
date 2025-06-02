@@ -492,24 +492,25 @@ app.post('/zapi-webhook', async (req, res) => {
         let hora = (() => {
           const { DateTime } = require('luxon');
 
-          // Extrai hora diretamente do texto original do usuário
-          const horaTextoRegex = /(\d{1,2})[:h](\d{2})(?!\d)/g;
+          // 🕵️ Tenta extrair hora do texto do usuário
+          const horaTextoRegex = /(\d{1,2})([:h]?)(\d{2})?/gi;
           const matches = [...rawMessage.matchAll(horaTextoRegex)];
           if (matches.length > 0) {
             const ultima = matches[matches.length - 1];
             const h = ultima[1].padStart(2, '0');
-            const m = ultima[2].padStart(2, '0');
+            const m = ultima[3] ? ultima[3].padStart(2, '0') : '00';
             return `${h}:${m}`;
           }
 
-          // Se não encontrou no texto, tenta fallback (Z-API)
+          // 🕵️ Se não achou no texto, tenta fallback (Z-API)
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
 
-          // Tenta extrair diretamente do parâmetro do Dialogflow
+          // 🕓 Se ainda não encontrou, tenta pelos parâmetros do Dialogflow
           if (parameters?.hora && parameters?.data) {
             try {
-              const horaLuxon = DateTime.fromISO(parameters.hora, { zone: 'America/Sao_Paulo' });
+              // Usa Luxon com timezone explícito
+              const horaLuxon = DateTime.fromISO(parameters.hora, { zone: 'utc' }).setZone('America/Sao_Paulo');
               const dataLuxon = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
 
               if (horaLuxon.isValid && dataLuxon.isValid) {
