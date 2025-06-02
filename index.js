@@ -587,10 +587,58 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'FalarComAtendente') {
-      await notifyTelegram(cleanPhone, message);
-      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
-      return res.status(200).send("OK");
+      try {
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'transbordo humano',
+          intent
+        });
+
+        const resposta = 'Já te coloco em contato com alguém da nossa equipe 👨‍⚕️. Um momento...';
+
+        await sendZapiMessage(resposta);
+
+        return res.status(200).send(); // confirma que o webhook respondeu
+      } catch (error) {
+        console.error('Erro ao encaminhar para atendimento humano:', error);
+        return res.status(500).send("Erro ao processar a solicitação");
+      }
     }
+
+    if (intent === 'Emergencia') {
+      const fallback = extractFallbackFields(message);
+      const rawMessage = message?.text?.message || '';
+
+      // 🧠 Nome
+      const nomeRaw = parameters?.nome?.name
+        || (Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome)
+        || fallback.nome
+        || 'Paciente';
+
+      const nome = capitalizarNomeCompleto(nomeRaw.trim().split(/\s+/).slice(0, 4).join(' '));
+
+      // 🧠 Descrição do problema (tenta extrair ou usa mensagem como um todo)
+      const descricao = parameters?.problema || fallback.procedimento || rawMessage;
+
+      // ✅ Notificar equipe e registrar
+      await notifyTelegram(cleanPhone, `🆘 Emergência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Problema: ${descricao}`);
+      await logToSheet({
+        phone: cleanPhone,
+        message: descricao,
+        nome,
+        type: 'emergência',
+        intent
+      });
+
+      // 💬 Resposta ao usuário
+      const resposta = `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`;
+
+      await sendZapiMessage(resposta);
+      return res.status(200).send();
+    }
+
 
     if (intent === 'VerificarListaConvenios') {
       const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
