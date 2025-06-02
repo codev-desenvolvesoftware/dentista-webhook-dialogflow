@@ -478,6 +478,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const data = formatarDataHora(parameters?.data || fallback.data, 'data');
 
         // 🕓 Hora com fallback
+        console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
         let hora = formatarDataHora(parameters?.hora || '', 'hora');
         if (!hora || hora === 'Hora inválida') {
           hora = formatarDataHora(fallback.hora, 'hora');
