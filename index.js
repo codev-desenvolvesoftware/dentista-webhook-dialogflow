@@ -622,6 +622,17 @@ app.post('/zapi-webhook', async (req, res) => {
       // 🧠 Descrição do problema (tenta extrair ou usa mensagem como um todo)
       const descricao = parameters?.problema || fallback.procedimento || rawMessage;
 
+      // Se faltou nome ou problema, solicita informações
+      if (!nomeRaw || !problema) {
+        const faltando = [];
+        if (!nomeRaw) faltando.push("Seu nome: ");
+        if (!problema) faltando.push("O que está acontecendo? ");
+
+        const prompt = `Para te ajudar com urgência, preciso que informe ${faltando.join(" e ")}.`;
+        await sendZapiMessage(prompt);
+        return res.status(200).send();
+      }
+
       // ✅ Notificar equipe e registrar
       await notifyTelegram(cleanPhone, `🆘 Emergência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Problema: ${descricao}`);
       await logToSheet({
