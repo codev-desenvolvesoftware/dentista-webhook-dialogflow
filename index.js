@@ -385,8 +385,8 @@ function toTitleCase(str) {
 }
 
 //Funções para emergencia
-function getContext(body, contextName) {
-  return body.queryResult?.outputContexts?.find(c => c.name.includes(contextName));
+function getContext(queryResult, contextName) {
+  return queryResult?.outputContexts?.find(c => c.name.includes(contextName));
 }
 function setContext(res, name, lifespan = 2, parameters = {}) {
   const outputContexts = [
@@ -625,7 +625,7 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'Emergencia') {
       console.log("Intent recebida:", intent);
 
-      const contextoAnterior = getContext(body, 'aguardando_nome') || getContext(body, 'aguardando_descricao');
+      const contextoAnterior = getContext(queryResult, 'aguardando_nome') || getContext(queryResult, 'aguardando_descricao');
       const rawMessage = message?.text?.message || '';
       const fallback = extractFallbackFields(message);
       const nomeBruto = parameters?.nome || fallback.nome;
