@@ -491,10 +491,11 @@ app.post('/zapi-webhook', async (req, res) => {
         console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
         let hora = (() => {
           // Primeiro tenta extrair do texto original
-          const match = rawMessage.match(/\b(\d{1,2}[:h]\d{2})\b/i);
-          if (match) {
-            const horas = match[1].padStart(2, '0');
-            const minutos = match[2] ? match[2].padStart(2, '0') : '00';
+          const horasEncontradas = [...rawMessage.matchAll(/\b(\d{1,2})[:h](\d{2})\b/g)];
+          if (horasEncontradas.length > 0) {
+            const ultimaHora = horasEncontradas[horasEncontradas.length - 1];
+            const horas = ultimaHora[1].padStart(2, '0');
+            const minutos = ultimaHora[2].padStart(2, '0');
             return `${horas}:${minutos}`;
           }
           // Depois tenta fallback
