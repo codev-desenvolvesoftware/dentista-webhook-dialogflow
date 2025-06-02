@@ -122,14 +122,9 @@ async function logToSheet({ phone, message, type, intent }) {
 }
 
 // Registros de agendamentos(avaliação/consulta) no Sheets
-async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, hora, procedimento }) {
+async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, hora, procedimento, convenio = '-' }) {
   console.log("🧾 Dados a serem salvos:", {
-    nome,
-    telefone,
-    tipoAgendamento,
-    data,
-    hora,
-    procedimento
+    nome, telefone, tipoAgendamento, data, hora, procedimento, convenio
   });
   try {
     const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
@@ -138,14 +133,14 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: GOOGLE_SHEETS_ID,
-      range: `${sheetName}!A:F`,
+      range: `${sheetName}!A:G`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[nome, telefone, tipoAgendamento, data, hora, procedimento]]
+        values: [[nome, telefone, tipoAgendamento, data, hora, procedimento, convenio]]
       }
     });
 
-    console.log(`📆 Agendamento registrado com sucesso: ${nome}, ${data} às ${hora}, ${procedimento}`);
+    console.log(`📆 Agendamento registrado com sucesso: ${nome}, ${data} às ${hora}, ${procedimento}, convênio: ${convenio}`);
   } catch (err) {
     console.error("❌ Erro ao registrar agendamento no Google Sheets:", err.message);
   }
@@ -421,6 +416,12 @@ app.post('/zapi-webhook', async (req, res) => {
 
   if (!from || !message) return res.status(400).send('Dados inválidos');
 
+  await logToSheet({
+    phone: cleanPhone,
+    message,
+    type: 'usuario'
+  });
+
   try {
     if (!accessToken || Date.now() >= tokenExpiry) await getDialogflowAccessToken();
 
@@ -496,6 +497,14 @@ app.post('/zapi-webhook', async (req, res) => {
           hora = 'a definir';
         }
 
+        // 🔍 Buscar convênio no contexto (se houver)
+        const contextoConvenio = queryResult.outputContexts?.find(ctx =>
+          ctx.parameters?.convenio || ctx.parameters?.convenio_detectado
+        );
+        const convenio = contextoConvenio?.parameters?.convenio ||
+          contextoConvenio?.parameters?.convenio_detectado ||
+          '-';
+
         const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
         await logToAgendamentosSheet({
@@ -504,7 +513,8 @@ app.post('/zapi-webhook', async (req, res) => {
           tipoAgendamento,
           data,
           hora,
-          procedimento
+          procedimento,
+          convenio
         });
 
         await sendZapiMessage(respostaFinal);
@@ -709,7 +719,12 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (reply) {
       await sendZapiMessage(reply);
-      await logToSheet({ phone: cleanPhone, message, type: 'bot', intent });
+      await logToSheet({
+        phone: cleanPhone,
+        message: reply,
+        type: 'bot',
+        intent
+      });
       return res.status(200).send("OK");
     } else {
       console.warn("⚠️ Nenhuma resposta definida para a intent.");
@@ -755,7 +770,7 @@ app.post('/zapi-outgoing', async (req, res) => {
 
     // Ignora mensagens automáticas
     if (!text.includes("Seu atendimento foi marcado como resolvido")) {
-      await logToSheet({ phone: cleanPhone, message: text, type: 'humano' });
+      await logToSheet({ phone: cleanPhone, message: text, type: 'bot' });
       console.log("✅ Mensagem humana registrada no Sheets:", text);
     }
   }
