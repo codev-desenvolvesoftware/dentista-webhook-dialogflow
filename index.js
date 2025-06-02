@@ -490,21 +490,32 @@ app.post('/zapi-webhook', async (req, res) => {
         // 🕓 Hora com fallback
         console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
         let hora = (() => {
-          // Primeiro tenta extrair do texto original
-          const horasEncontradas = [...rawMessage.matchAll(/\b(\d{1,2})[:h](\d{2})\b/g)];
-          if (horasEncontradas.length > 0) {
-            const ultimaHora = horasEncontradas[horasEncontradas.length - 1];
-            const horas = ultimaHora[1].padStart(2, '0');
-            const minutos = ultimaHora[2].padStart(2, '0');
-            return `${horas}:${minutos}`;
+          // Extrai hora diretamente do texto original do usuário
+          const horaTextoRegex = /(?:\s|^)(\d{1,2})[:h](\d{2})(?:\s|$)/g;
+          const matches = [...rawMessage.matchAll(horaTextoRegex)];
+          if (matches.length > 0) {
+            const ultima = matches[matches.length - 1];
+            const h = ultima[1].padStart(2, '0');
+            const m = ultima[2].padStart(2, '0');
+            return `${h}:${m}`;
           }
-          // Depois tenta fallback
+
+          // Se não encontrou no texto, tenta fallback (Z-API)
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
-          // Por último tenta parâmetro do Dialogflow
-          const horaDialogflow = formatarDataHora(parameters?.hora || '', 'hora');
-          return (horaDialogflow && horaDialogflow !== 'Hora inválida') ? horaDialogflow : 'a definir';
+
+          // Por último, tenta parâmetro do Dialogflow
+          const horaParam = parameters?.hora;
+          if (horaParam && typeof horaParam === 'string') {
+            // Só aceita se estiver no mesmo dia da data informada
+            const dataIso = parameters?.data;
+            if (dataIso && horaParam.startsWith(dataIso.substring(0, 10))) {
+              return formatarDataHora(horaParam, 'hora');
+            }
+          }
+          return 'a definir';
         })();
+
 
         // 🔍 Buscar convênio no contexto (se houver)
         const contextoConvenio = queryResult.outputContexts?.find(ctx =>
