@@ -611,30 +611,27 @@ app.post('/zapi-webhook', async (req, res) => {
       const fallback = extractFallbackFields(message);
       const rawMessage = message?.text?.message || '';
 
-      // 🧠 Nome
-      const nomeRaw = parameters?.nome?.name
+      // Nome bruto (sem fallback automático)
+      const nomeBruto = parameters?.nome?.name
         || (Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome)
-        || fallback.nome
-        || 'Paciente';
+        || fallback.nome;
 
-      const nome = capitalizarNomeCompleto(nomeRaw.trim().split(/\s+/).slice(0, 4).join(' '));
-
-      // 🧠 Descrição do descricao (tenta extrair ou usa mensagem como um todo)
       const descricao = parameters?.descricao || fallback.procedimento || rawMessage;
 
-      // Se faltou nome ou descricao, solicita informações
-      if (!nomeRaw || !descricao) {
+      // ⚠️ Se faltou nome ou descrição, solicitar ao usuário
+      if (!nomeBruto || !descricao || descricao.trim().length < 3) {
         const faltando = [];
-        if (!nomeRaw) faltando.push("Seu nome: ");
-        if (!descricao) faltando.push("O que está acontecendo? ");
+        if (!nomeBruto) faltando.push("seu nome completo");
+        if (!descricao || descricao.trim().length < 3) faltando.push("o que está sentindo");
 
-        const prompt = `Para te ajudar com urgência, preciso que informe ${faltando.join(" e ")}.`;
+        const prompt = `Para agilizar o atendimento de emergência, informe por favor ${faltando.join(" e ")}.`;
         await sendZapiMessage(prompt);
         return res.status(200).send();
       }
 
-      // ✅ Notificar equipe e registrar
-      await notifyTelegram(cleanPhone, `🆘 Emergência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 descricao: ${descricao}`);
+      const nome = capitalizarNomeCompleto(nomeBruto.trim().split(/\s+/).slice(0, 4).join(' '));
+
+      await notifyTelegram(cleanPhone, `🆘 Emergência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Descrição: ${descricao}`);
       await logToSheet({
         phone: cleanPhone,
         message: descricao,
@@ -643,9 +640,7 @@ app.post('/zapi-webhook', async (req, res) => {
         intent
       });
 
-      // 💬 Resposta ao usuário
       const resposta = `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`;
-
       await sendZapiMessage(resposta);
       return res.status(200).send();
     }
