@@ -491,7 +491,7 @@ app.post('/zapi-webhook', async (req, res) => {
         console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
         let hora = (() => {
           // Extrai hora diretamente do texto original do usuário
-          const horaTextoRegex = /(?:\s|^)(\d{1,2})[:h](\d{2})(?:\s|$)/g;
+          const horaTextoRegex = /(\d{1,2})[:h](\d{2})(?!\d)/g;
           const matches = [...rawMessage.matchAll(horaTextoRegex)];
           if (matches.length > 0) {
             const ultima = matches[matches.length - 1];
