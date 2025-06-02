@@ -506,10 +506,10 @@ app.post('/zapi-webhook', async (req, res) => {
 
           // Por último, tenta parâmetro do Dialogflow
           const horaParam = parameters?.hora;
-          if (horaParam && typeof horaParam === 'string') {
-            // Só aceita se estiver no mesmo dia da data informada
-            const dataIso = parameters?.data;
-            if (dataIso && horaParam.startsWith(dataIso.substring(0, 10))) {
+          const dataParam = parameters?.data;
+          if (horaParam && dataParam && typeof horaParam === 'string') {
+            const dataDia = dataParam.substring(0, 10);
+            if (horaParam.startsWith(dataDia)) {
               return formatarDataHora(horaParam, 'hora');
             }
           }
