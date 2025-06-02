@@ -490,6 +490,8 @@ app.post('/zapi-webhook', async (req, res) => {
         // 🕓 Hora com fallback
         console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
         let hora = (() => {
+          const { DateTime } = require('luxon');
+
           // Extrai hora diretamente do texto original do usuário
           const horaTextoRegex = /(\d{1,2})[:h](\d{2})(?!\d)/g;
           const matches = [...rawMessage.matchAll(horaTextoRegex)];
@@ -504,27 +506,24 @@ app.post('/zapi-webhook', async (req, res) => {
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
 
-          // Por último, tenta parâmetro do Dialogflow
-          // Se a hora for um ISO com data errada, mas a hora está correta
+          // Tenta extrair diretamente do parâmetro do Dialogflow
           if (parameters?.hora && parameters?.data) {
             try {
-              const { DateTime } = require('luxon');
-              const horaLuxon = DateTime.fromISO(parameters.hora);
-              const dataLuxon = DateTime.fromISO(parameters.data);
+              const horaLuxon = DateTime.fromISO(parameters.hora, { zone: 'America/Sao_Paulo' });
+              const dataLuxon = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
 
               if (horaLuxon.isValid && dataLuxon.isValid) {
-                // Substitui hora do dataLuxon com a hora do horaLuxon
                 const combinada = dataLuxon.set({
                   hour: horaLuxon.hour,
                   minute: horaLuxon.minute
                 });
-
                 return combinada.toFormat('HH:mm');
               }
             } catch (e) {
-              console.error("Erro ao combinar data e hora:", e);
+              console.error("Erro ao combinar data e hora com timezone:", e);
             }
           }
+
           return 'a definir';
         })();
 
