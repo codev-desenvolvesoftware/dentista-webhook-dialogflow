@@ -504,6 +504,7 @@ app.post('/zapi-webhook', async (req, res) => {
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
 
+          // Por último, tenta parâmetro do Dialogflow
           // Se a hora for um ISO com data errada, mas a hora está correta
           if (parameters?.hora && parameters?.data) {
             try {
@@ -517,255 +518,258 @@ app.post('/zapi-webhook', async (req, res) => {
                   hour: horaLuxon.hour,
                   minute: horaLuxon.minute
                 });
+
                 return combinada.toFormat('HH:mm');
               }
             } catch (e) {
               console.error("Erro ao combinar data e hora:", e);
             }
           }
+          return 'a definir';
+        })();
 
 
-          // 🔍 Buscar convênio no contexto (se houver)
-          const contextoConvenio = queryResult.outputContexts?.find(ctx =>
-            ctx.parameters?.convenio || ctx.parameters?.convenio_detectado
-          );
-          const convenio = contextoConvenio?.parameters?.convenio ||
-            contextoConvenio?.parameters?.convenio_detectado ||
-            '-';
+        // 🔍 Buscar convênio no contexto (se houver)
+        const contextoConvenio = queryResult.outputContexts?.find(ctx =>
+          ctx.parameters?.convenio || ctx.parameters?.convenio_detectado
+        );
+        const convenio = contextoConvenio?.parameters?.convenio ||
+          contextoConvenio?.parameters?.convenio_detectado ||
+          '-';
 
-          const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
+        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
 
-          await logToAgendamentosSheet({
-            nome: nomeFormatado,
-            telefone: cleanPhone,
-            tipoAgendamento,
-            data,
-            hora,
-            procedimento,
-            convenio
-          });
+        await logToAgendamentosSheet({
+          nome: nomeFormatado,
+          telefone: cleanPhone,
+          tipoAgendamento,
+          data,
+          hora,
+          procedimento,
+          convenio
+        });
 
-          await sendZapiMessage(respostaFinal);
-        } catch (err) {
-          console.error("❌ Erro no agendamento:", err.message);
-        }
-      };
-
-
-      // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
-      if (normalize(message) === 'sim') {
-        const contextNames = queryResult.outputContexts?.map(c => c.name) || [];
-
-        const inConsultaContext = contextNames.some(name => name.includes('aguardando-sim-consulta'));
-        const inAvaliacaoContext = contextNames.some(name => name.includes('aguardando-sim-avaliacao'));
-
-        if (inConsultaContext) {
-          console.log('📌 Direcionando para AgendarConsultaFinal');
-          await handleAgendamento('consulta');
-          return res.status(200).send("Agendamento de consulta realizado");
-        }
-
-        if (inAvaliacaoContext) {
-          console.log('📌 Direcionando para AgendarAvaliacaoFinal');
-          await handleAgendamento('avaliação');
-          return res.status(200).send("Agendamento de avaliação realizado");
-        }
+        await sendZapiMessage(respostaFinal);
+      } catch (err) {
+        console.error("❌ Erro no agendamento:", err.message);
       }
+    };
 
-      if (intent === 'AgendarAvaliacaoFinal') {
-        await handleAgendamento('avaliação');
-        return res.status(200).send("OK");
-      }
 
-      if (intent === 'AgendarConsultaFinal') {
+    // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
+    if (normalize(message) === 'sim') {
+      const contextNames = queryResult.outputContexts?.map(c => c.name) || [];
+
+      const inConsultaContext = contextNames.some(name => name.includes('aguardando-sim-consulta'));
+      const inAvaliacaoContext = contextNames.some(name => name.includes('aguardando-sim-avaliacao'));
+
+      if (inConsultaContext) {
+        console.log('📌 Direcionando para AgendarConsultaFinal');
         await handleAgendamento('consulta');
-        return res.status(200).send("OK");
+        return res.status(200).send("Agendamento de consulta realizado");
       }
 
-      if (intent === 'FalarComAtendente') {
-        await notifyTelegram(cleanPhone, message);
-        await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
-        return res.status(200).send("OK");
+      if (inAvaliacaoContext) {
+        console.log('📌 Direcionando para AgendarAvaliacaoFinal');
+        await handleAgendamento('avaliação');
+        return res.status(200).send("Agendamento de avaliação realizado");
       }
+    }
 
-      if (intent === 'VerificarListaConvenios') {
-        const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
+    if (intent === 'AgendarAvaliacaoFinal') {
+      await handleAgendamento('avaliação');
+      return res.status(200).send("OK");
+    }
 
-        if (ctxConfirmacao) {
-          // Normalize a mensagem do usuário
-          const messageNormalized = normalize(message);
+    if (intent === 'AgendarConsultaFinal') {
+      await handleAgendamento('consulta');
+      return res.status(200).send("OK");
+    }
 
-          // Tentativa de obter o convênio informado via parâmetros
-          let convenioInformado =
-            parameters?.convenio_aceito ||
-            parameters?.convenio;
+    if (intent === 'FalarComAtendente') {
+      await notifyTelegram(cleanPhone, message);
+      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent });
+      return res.status(200).send("OK");
+    }
 
-          // Fallback se parameters estiverem vazios ou for um objeto vazio
-          if (
-            !convenioInformado ||
-            (typeof convenioInformado === 'object' && Object.keys(convenioInformado).length === 0)
-          ) {
-            convenioInformado = detectarConvenioNaFrase(messageNormalized, conveniosAceitos);
-          }
+    if (intent === 'VerificarListaConvenios') {
+      const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
 
-          // Normaliza o valor final do convênio informado
-          const convenioTexto =
-            typeof convenioInformado === 'string'
-              ? convenioInformado
-              : typeof convenioInformado?.value === 'string'
-                ? convenioInformado.value
-                : '';
+      if (ctxConfirmacao) {
+        // Normalize a mensagem do usuário
+        const messageNormalized = normalize(message);
 
-          const textoConvenio = normalize(convenioTexto);
+        // Tentativa de obter o convênio informado via parâmetros
+        let convenioInformado =
+          parameters?.convenio_aceito ||
+          parameters?.convenio;
 
-          // Detecta se é ou não um convênio aceito
-          const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
+        // Fallback se parameters estiverem vazios ou for um objeto vazio
+        if (
+          !convenioInformado ||
+          (typeof convenioInformado === 'object' && Object.keys(convenioInformado).length === 0)
+        ) {
+          convenioInformado = detectarConvenioNaFrase(messageNormalized, conveniosAceitos);
+        }
 
-          // ⛔️ Se não encontrou convênio válido, dispara evento ConvenioNaoAtendido
-          if (!convenioDetectado) {
-            console.log('❌ Nenhum convênio detectado. Disparando evento ConvenioNaoAtendido');
-            await logToSheet({
-              phone: cleanPhone,
-              message,
-              type: 'bot',
-              intent: `ConvenioNaoAtendido (evento disparado)`
-            });
-            const naoAtendidoResponse = await axios.post(
-              `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
-              {
-                queryInput: {
-                  event: {
-                    name: 'ConvenioNaoAtendido',
-                    languageCode: 'pt-BR'
-                  }
-                }
-              },
-              { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
-            const followupText = naoAtendidoResponse.data.queryResult.fulfillmentText;
-            console.log("🤖 Resposta do evento (NaoAtendido):", followupText);
-            if (followupText) {
-              await sendZapiMessage(followupText);
-            }
-            return res.status(200).send("Evento ConvenioNaoAtendido disparado");
-          }
+        // Normaliza o valor final do convênio informado
+        const convenioTexto =
+          typeof convenioInformado === 'string'
+            ? convenioInformado
+            : typeof convenioInformado?.value === 'string'
+              ? convenioInformado.value
+              : '';
 
-          // 🟢 Se chegou aqui, convênio foi identificado — segue fluxo normal:
-          const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
+        const textoConvenio = normalize(convenioTexto);
 
-          // Formata o nome do convênio com letras maiúsculas
-          const convenioFormatado = toTitleCase(convenioDetectado || '');
+        // Detecta se é ou não um convênio aceito
+        const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
+        // ⛔️ Se não encontrou convênio válido, dispara evento ConvenioNaoAtendido
+        if (!convenioDetectado) {
+          console.log('❌ Nenhum convênio detectado. Disparando evento ConvenioNaoAtendido');
           await logToSheet({
             phone: cleanPhone,
             message,
             type: 'bot',
-            intent: `${followup} (event redirect)`
+            intent: `ConvenioNaoAtendido (evento disparado)`
           });
-
-          // LOGS DE DEPURAÇÃO - CONVÊNIO
-          console.log('🔎 Convênio detectado:', convenioDetectado);
-          console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '[nenhum parâmetro]' });
-
-          const eventPayload = {
-            name: followup,
-            languageCode: 'pt-BR',
-            ...(convenioDetectado && { parameters: { convenio: convenioFormatado } }) // só adiciona se existir
-          };
-
-          // Envia evento para Dialogflow com nome capitalizado
-          const followupResponse = await axios.post(
+          const naoAtendidoResponse = await axios.post(
             `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
             {
               queryInput: {
-                event: eventPayload
+                event: {
+                  name: 'ConvenioNaoAtendido',
+                  languageCode: 'pt-BR'
+                }
               }
             },
             { headers: { Authorization: `Bearer ${accessToken}` } }
           );
-
-          const followupText = followupResponse.data.queryResult.fulfillmentText;
-          console.log("🤖 Resposta do evento:", followupText);
-
+          const followupText = naoAtendidoResponse.data.queryResult.fulfillmentText;
+          console.log("🤖 Resposta do evento (NaoAtendido):", followupText);
           if (followupText) {
             await sendZapiMessage(followupText);
           }
-
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: `${followup} (evento disparado)`
-          });
-
-          return res.status(200).send("Followup executado");
+          return res.status(200).send("Evento ConvenioNaoAtendido disparado");
         }
-      }
 
-      // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
-      if (intent && !reply) {
-        const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
-        const falhas = contextoTentativa?.parameters?.falhas || 0;
+        // 🟢 Se chegou aqui, convênio foi identificado — segue fluxo normal:
+        const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
-        if (falhas >= 1) {
-          // Segunda falha: transbordo para atendente
-          await sendZapiMessage('Vou acionar um atendente 👩‍💻 Aguarde só um instante ');
-          await notifyTelegram(cleanPhone, message);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'transbordo humano',
-            intent: 'FallbackDepoisDeFalha'
-          });
-          return res.status(200).json({
-            fulfillmentText: 'Encaminhando para atendente...',
-            outputContexts: [] // encerra o contexto
-          });
-        } else {
-          // Primeira falha: responde e seta contexto com falhas = 1
-          const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
-          await sendZapiMessage(respostaPadrao);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: 'RespostaVazia'
-          });
+        // Formata o nome do convênio com letras maiúsculas
+        const convenioFormatado = toTitleCase(convenioDetectado || '');
 
-          return res.status(200).json({
-            fulfillmentText: respostaPadrao,
-            outputContexts: [{
-              name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
-              lifespanCount: 1,
-              parameters: {
-                falhas: 1
-              }
-            }]
-          });
-        }
-      }
-
-      if (reply) {
-        await sendZapiMessage(reply);
         await logToSheet({
           phone: cleanPhone,
-          message: reply,
+          message,
           type: 'bot',
-          intent
+          intent: `${followup} (event redirect)`
         });
-        return res.status(200).send("OK");
-      } else {
-        console.warn("⚠️ Nenhuma resposta definida para a intent.");
+
+        // LOGS DE DEPURAÇÃO - CONVÊNIO
+        console.log('🔎 Convênio detectado:', convenioDetectado);
+        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '[nenhum parâmetro]' });
+
+        const eventPayload = {
+          name: followup,
+          languageCode: 'pt-BR',
+          ...(convenioDetectado && { parameters: { convenio: convenioFormatado } }) // só adiciona se existir
+        };
+
+        // Envia evento para Dialogflow com nome capitalizado
+        const followupResponse = await axios.post(
+          `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
+          {
+            queryInput: {
+              event: eventPayload
+            }
+          },
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        const followupText = followupResponse.data.queryResult.fulfillmentText;
+        console.log("🤖 Resposta do evento:", followupText);
+
+        if (followupText) {
+          await sendZapiMessage(followupText);
+        }
+
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: `${followup} (evento disparado)`
+        });
+
+        return res.status(200).send("Followup executado");
       }
-
-      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
-      return res.status(200).send("Mensagem humana registrada.");
-
-    } catch (err) {
-      console.error("❌ Erro ao processar mensagem:", err.message);
-      res.status(500).send("Erro ao processar");
     }
-  });
+
+    // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
+    if (intent && !reply) {
+      const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
+      const falhas = contextoTentativa?.parameters?.falhas || 0;
+
+      if (falhas >= 1) {
+        // Segunda falha: transbordo para atendente
+        await sendZapiMessage('Vou acionar um atendente 👩‍💻 Aguarde só um instante ');
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'transbordo humano',
+          intent: 'FallbackDepoisDeFalha'
+        });
+        return res.status(200).json({
+          fulfillmentText: 'Encaminhando para atendente...',
+          outputContexts: [] // encerra o contexto
+        });
+      } else {
+        // Primeira falha: responde e seta contexto com falhas = 1
+        const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
+        await sendZapiMessage(respostaPadrao);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: 'RespostaVazia'
+        });
+
+        return res.status(200).json({
+          fulfillmentText: respostaPadrao,
+          outputContexts: [{
+            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
+            lifespanCount: 1,
+            parameters: {
+              falhas: 1
+            }
+          }]
+        });
+      }
+    }
+
+    if (reply) {
+      await sendZapiMessage(reply);
+      await logToSheet({
+        phone: cleanPhone,
+        message: reply,
+        type: 'bot',
+        intent
+      });
+      return res.status(200).send("OK");
+    } else {
+      console.warn("⚠️ Nenhuma resposta definida para a intent.");
+    }
+
+    await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
+    return res.status(200).send("Mensagem humana registrada.");
+
+  } catch (err) {
+    console.error("❌ Erro ao processar mensagem:", err.message);
+    res.status(500).send("Erro ao processar");
+  }
+});
 
 
 // Rota para capturar as mensagens enviadas do atendente para o cliente
