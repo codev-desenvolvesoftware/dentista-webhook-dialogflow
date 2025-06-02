@@ -489,24 +489,21 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 🕓 Hora com fallback
         console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
-        let hora = formatarDataHora(parameters?.hora || '', 'hora');
-        if (!hora || hora === 'Hora inválida') {
-          hora = formatarDataHora(fallback.hora, 'hora');
-        }
-
-        // Nova tentativa: extrair diretamente do texto
-        if (!hora || hora === 'Hora inválida') {
-          const regexHora = /\b(\d{1,2})(?:[:h](\d{2}))?\b/i;
-          const matchHora = rawMessage.match(regexHora);
-          if (matchHora) {
-            const horas = matchHora[1].padStart(2, '0');
-            const minutos = matchHora[2] ? matchHora[2].padStart(2, '0') : '00';
-            hora = `${horas}:${minutos}`;
+        let hora = (() => {
+          // Primeiro tenta extrair do texto original
+          const match = rawMessage.match(/\b(\d{1,2})(?:[:h](\d{2}))?\b/i);
+          if (match) {
+            const horas = match[1].padStart(2, '0');
+            const minutos = match[2] ? match[2].padStart(2, '0') : '00';
+            return `${horas}:${minutos}`;
           }
-        }
-        if (!hora || hora === 'Hora inválida') {
-          hora = 'a definir';
-        }
+          // Depois tenta fallback
+          const horaFallback = formatarDataHora(fallback.hora, 'hora');
+          if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
+          // Por último tenta parâmetro do Dialogflow
+          const horaDialogflow = formatarDataHora(parameters?.hora || '', 'hora');
+          return (horaDialogflow && horaDialogflow !== 'Hora inválida') ? horaDialogflow : 'a definir';
+        })();
 
         // 🔍 Buscar convênio no contexto (se houver)
         const contextoConvenio = queryResult.outputContexts?.find(ctx =>
