@@ -224,31 +224,33 @@ function formatarDataHora(valor, tipo) {
   if (!valor) return tipo === 'data' ? 'Data inválida' : '';
 
   try {
+
+    const { DateTime } = require('luxon');
+
     if (tipo === 'hora') {
-      // Se for string ISO com "T", trata como data completa
-      if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(valor)) {
-        const date = new Date(valor);
-        // Força o fuso correto, sem converter para UTC
-        const horaFormatada = date.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'America/Sao_Paulo',
-        });
-        return horaFormatada;
+      // Verifica se é uma string ISO (com "T" e possível timezone)
+      const isoRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/;
+      if (isoRegex.test(valor)) {
+        try {
+          const horaLuxon = DateTime.fromISO(valor, { zone: 'America/Sao_Paulo' });
+          if (!horaLuxon.isValid) return 'Hora inválida';
+          return horaLuxon.toFormat('HH:mm');
+        } catch (err) {
+          return 'Erro ao processar hora ISO';
+        }
       }
 
-      // Caso contrário, trata como hora textual simples
-      valor = valor.toLowerCase().replace(/[^\d:a-z]/g, '').replace(/\s+/g, '');
+      // Para valores não ISO, apenas remove espaços e converte para minúsculas
+      valor = valor.toLowerCase().trim();
 
-      if (/[^0-9:h]/.test(valor)) return 'Hora inválida';
-
+      // Array de expressões regulares para formatos válidos
       const horaRegexes = [
-        /^(\d{1,2})h(\d{1,2})$/,     // 10h30
-        /^(\d{1,2})h$/,              // 10h
-        /^(\d{1,2}):(\d{1,2})$/,     // 10:30
-        /^(\d{1,2}):(\d{1,2})h$/,    // 10:30h
-        /^(\d{2})(\d{2})$/,          // 1130
-        /^(\d{1,2})$/,               // 10
+        /^(\d{1,2})h(\d{1,2})$/,   // Ex: 10h30
+        /^(\d{1,2})h$/,            // Ex: 10h
+        /^(\d{1,2}):(\d{1,2})$/,    // Ex: 10:30
+        /^(\d{1,2}):(\d{1,2})h$/,   // Ex: 10:30h
+        /^(\d{2})(\d{2})$/,         // Ex: 1030
+        /^(\d{1,2})$/              // Ex: 10
       ];
 
       let horas, minutos;
@@ -261,9 +263,17 @@ function formatarDataHora(valor, tipo) {
         }
       }
 
+      // Se nenhum dos formatos foi validado, retorna erro
       if (horas === undefined) return 'Hora inválida';
+
+      // Pad com zeros se necessário
       horas = horas.padStart(2, '0');
       minutos = minutos.padStart(2, '0');
+
+      // Validação extra: valores reais para hora e minuto
+      const h = parseInt(horas, 10);
+      const m = parseInt(minutos, 10);
+      if (h > 23 || m > 59) return 'Hora inválida';
 
       return `${horas}:${minutos}`;
     }
