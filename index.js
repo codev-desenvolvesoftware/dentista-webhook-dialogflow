@@ -622,9 +622,10 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
-    const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
+    
     const nomeCompleto = parameters?.nome || contextoDescricao?.parameters?.nome || contextoNome?.parameters?.nome;
     const descricaoCompleta = parameters?.descricao || contextoDescricao?.parameters?.descricao;
+    const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
     if (contextoEncerrado && (!nomeCompleto || !descricaoCompleta)) {
       console.log("🛑 Urgência já encerrada, ignorando nova mensagem.");
       return res.status(200).send(); // Não responde nada
