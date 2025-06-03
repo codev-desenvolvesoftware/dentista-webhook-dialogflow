@@ -683,7 +683,6 @@ app.post('/zapi-webhook', async (req, res) => {
         await setContext(res, 'aguardando_descricao', 0);
 
         return res.status(200).send({
-          fulfillmentText: `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`,
           outputContexts: [
             {
               name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando_nome`,
