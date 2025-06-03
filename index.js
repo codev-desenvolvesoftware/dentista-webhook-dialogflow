@@ -622,7 +622,8 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
-    if (intent === 'Urgencia') {
+    // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
+    if (intent === 'Urgencia' || contextoNome || contextoDescricao) {
       console.log("📥 Intent: Urgencia");
 
       const rawMessage = message?.text?.message || '';
@@ -646,7 +647,7 @@ app.post('/zapi-webhook', async (req, res) => {
       // Depois do nome, solicitar descrição
       if (contextoNome && !contextoDescricao && !descricao) {
         await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
-        await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
+        await setContext(res, 'aguardando_descricao', 1, { nome }, sessionId);
         return res.status(200).send();
       }
 
