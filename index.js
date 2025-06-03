@@ -622,6 +622,8 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
+    const contextoNome = getContext(queryResult, 'aguardando_nome');
+    const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
     // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
     if (intent === 'Urgencia' || contextoNome || contextoDescricao) {
       console.log("📥 Intent: Urgencia");
@@ -630,9 +632,6 @@ app.post('/zapi-webhook', async (req, res) => {
       const fallback = extractFallbackFields(message);
       const nomeBruto = parameters?.nome || fallback.nome;
       const descricaoBruta = parameters?.descricao || rawMessage.trim();
-
-      const contextoNome = getContext(queryResult, 'aguardando_nome');
-      const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
 
       const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
       const descricao = (descricaoBruta || '').trim();
