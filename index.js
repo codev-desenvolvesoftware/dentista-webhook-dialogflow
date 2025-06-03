@@ -642,25 +642,29 @@ app.post('/zapi-webhook', async (req, res) => {
 
       // Fluxo inicial - solicitar nome
       if (!contextoNome && !contextoDescricao && !nome) {
+        console.log("🔍 Contexto de nome não encontrado, solicitando nome do usuário.");
         await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
         await setContext(res, 'aguardando_nome', 5, {}, sessionId);
         return res.status(200).send();
       }
 
-      // Depois do nome, solicitar descrição
+      // Se ainda assim não houver nome, mas já tiver contexto de nome
       if (contextoNome && !contextoDescricao && !descricao) {
         if (!nome) {
+          console.log("🔍 Contexto de nome encontrado, mas nome não informado.");
           await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
           await setContext(res, 'aguardando_nome', 5, {}, sessionId);
           return res.status(200).send();
         }
-
+        // Tendo o nome, pergunta pela descrição
+        console.log("🔍 Nome encontrado, solicitando descrição do problema.");
         await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
         await setContext(res, 'aguardando_descricao', 5, { nome }, sessionId);
         return res.status(200).send();
       }
 
       // Após nome e descrição — finalizar
+      console.log("📥 Dados completos para urgência:", { nome, descricao });
       if (nome && descricao) {
         await notifyTelegram(cleanPhone, `🆘 Urgência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Descrição: ${descricao}`);
 
@@ -672,7 +676,7 @@ app.post('/zapi-webhook', async (req, res) => {
           intent
         });
 
-        await sendMessage(phone, `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
+        await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
 
         // Limpar contextos
         await setContext(res, 'aguardando_nome', 0);
@@ -682,6 +686,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }
 
       // Se algo deu errado e chegou aqui, repete a pergunta anterior
+      console.log("🔍 Dados incompletos, solicitando novamente.");
       const fallbackText = !nome ? 'Pode me informar seu *nome* por favor?'
         : 'Me diga *qual é o problema, o que está sentindo*?';
       await sendZapiMessage(fallbackText);
