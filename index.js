@@ -630,7 +630,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const rawMessage = message?.text?.message || '';
       const fallback = extractFallbackFields(message);
-      const nomeBruto = parameters?.nome || contextoNome?.parameters?.nome || fallback.nome;
+      const nomeBruto = parameters?.nome?.trim() || contextoNome?.parameters?.nome?.trim() || fallback.nome?.trim() || '';
       const descricaoBruta = parameters?.descricao || contextoDescricao?.parameters?.descricao || rawMessage.trim();
 
       const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
@@ -645,8 +645,14 @@ app.post('/zapi-webhook', async (req, res) => {
 
       // Depois do nome, solicitar descrição
       if (contextoNome && !contextoDescricao && !descricao) {
+        if (!nome) {
+          await sendZapiMessage('Não consegui identificar seu nome. Pode me informar novamente, por favor?');
+          await setContext(res, 'aguardando_nome', 2, {}, sessionId);
+          return res.status(200).send();
+        }
+
         await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
-        await setContext(res, 'aguardando_descricao', 1, { nome }, sessionId);
+        await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
         return res.status(200).send();
       }
 
