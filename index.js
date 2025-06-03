@@ -630,7 +630,11 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const rawMessage = message?.text?.message || '';
       const fallback = extractFallbackFields(message);
-      const nomeBruto = parameters?.nome?.trim() || contextoNome?.parameters?.nome?.trim() || fallback.nome?.trim() || '';
+      const nomeBruto =
+        parameters?.nome?.trim() ||
+        contextoDescricao?.parameters?.nome?.trim() ||  // 🔁 Pega do contexto atual
+        contextoNome?.parameters?.nome?.trim() ||
+        fallback.nome?.trim() || '';
       const descricaoBruta = parameters?.descricao || contextoDescricao?.parameters?.descricao || rawMessage.trim();
 
       const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
@@ -639,20 +643,20 @@ app.post('/zapi-webhook', async (req, res) => {
       // Fluxo inicial - solicitar nome
       if (!contextoNome && !contextoDescricao && !nome) {
         await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
-        await setContext(res, 'aguardando_nome', 2, {}, sessionId);
+        await setContext(res, 'aguardando_nome', 5, {}, sessionId);
         return res.status(200).send();
       }
 
       // Depois do nome, solicitar descrição
       if (contextoNome && !contextoDescricao && !descricao) {
         if (!nome) {
-          await sendZapiMessage('Não consegui identificar seu nome. Pode me informar novamente, por favor?');
-          await setContext(res, 'aguardando_nome', 2, {}, sessionId);
+          await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
+          await setContext(res, 'aguardando_nome', 5, {}, sessionId);
           return res.status(200).send();
         }
 
         await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
-        await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
+        await setContext(res, 'aguardando_descricao', 5, { nome }, sessionId);
         return res.status(200).send();
       }
 
