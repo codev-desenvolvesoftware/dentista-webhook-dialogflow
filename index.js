@@ -639,13 +639,13 @@ app.post('/zapi-webhook', async (req, res) => {
       if (!contextoAnterior) {
         console.log("!contextoAnterior");
         await setContext(res, 'aguardando_nome', 2);
-        await sendZapiMessage(phone, "Para agilizar o atendimento de emergência, informe por favor *seu nome*:");
+        await sendZapiMessage("Para agilizar o atendimento de emergência, informe por favor *seu nome*:");
         return res.status(200).send();
       }
 
       if (!nomeBruto) {
         console.log("!nomeBruto");
-        await sendZapiMessage(phone, 'Para agilizar o atendimento de emergência, informe por favor *seu nome*:')
+        await sendZapiMessage('Para agilizar o atendimento de emergência, informe por favor *seu nome*:')
         await setContext(res, 'aguardando_nome', 2, {}, sessionId);
         return res.status(200).send();
       }
