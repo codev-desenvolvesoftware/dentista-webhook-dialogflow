@@ -637,8 +637,16 @@ app.post('/zapi-webhook', async (req, res) => {
 
       // Se nenhum contexto: iniciar fluxo pedindo o nome
       if (!contextoAnterior) {
+        console.log("!contextoAnterior");
         await setContext(res, 'aguardando_nome', 2);
-        await sendZapiMessage("Para agilizar o atendimento de emergência, informe por favor *seu nome*:");
+        await sendZapiMessage(phone, "Para agilizar o atendimento de emergência, informe por favor *seu nome*:");
+        return res.status(200).send();
+      }
+
+      if (!nomeBruto) {
+        console.log("!nomeBruto");
+        await sendZapiMessage(phone, 'Para agilizar o atendimento de emergência, informe por favor *seu nome*:')
+        await setContext(res, 'aguardando_nome', 2, {}, sessionId);
         return res.status(200).send();
       }
 
@@ -646,7 +654,7 @@ app.post('/zapi-webhook', async (req, res) => {
       if (contextoAnterior?.name.endsWith('aguardando_nome')) {
         const nome = capitalizarNomeCompleto(rawMessage.trim().split(/\s+/).slice(0, 4).join(' '));
         await setContext(res, 'aguardando_descricao', 2, { nome });
-        await sendZapiMessage(`Obrigado, ${nome}! Agora me informe *qual é o problema, o que está sentindo*?`);
+        await sendMessage(phone, `Obrigado, ${nome}! Agora me informe *qual é o problema, o que está sentindo*?`);
         return res.status(200).send();
       }
 
@@ -656,7 +664,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const descricao = rawMessage;
 
         if (!descricao || descricao.length < 3) {
-          await sendZapiMessage("Descreva com mais detalhes o que está sentindo, por favor.");
+          await sendMessage(phone, "Descreva com mais detalhes o que está sentindo, por favor.");
           return res.status(200).send();
         }
 
@@ -670,7 +678,12 @@ app.post('/zapi-webhook', async (req, res) => {
         });
 
         const resposta = `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`;
-        await sendZapiMessage(resposta);
+        await sendMessage(phone, resposta);
+
+        // Limpa contexto para evitar erros
+        await setContext(res, 'aguardando_nome', 0);
+        await setContext(res, 'aguardando_descricao', 0);
+
         return res.status(200).send();
       }
     }
