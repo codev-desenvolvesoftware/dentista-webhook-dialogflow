@@ -623,7 +623,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
-    if (contextoEncerrado) {
+    if (contextoEncerrado && (!parameters?.descricao || !parameters?.nome)) {
       console.log("🛑 Urgência já encerrada, ignorando nova mensagem.");
       return res.status(200).send(); // Não responde nada
     }
@@ -684,7 +684,7 @@ app.post('/zapi-webhook', async (req, res) => {
         await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
         await setContext(res, 'aguardando_nome', 0, {}, sessionId);
         await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
-        await setContext(res, 'urgencia_encerrada', 2, {}, sessionId);
+        await setContext(res, 'urgencia_encerrada', 1, {}, sessionId);
 
         console.log("✅ Mensagem enviada e contextos atualizados.");
         return res.status(200).send();
