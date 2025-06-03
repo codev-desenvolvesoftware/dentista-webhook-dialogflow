@@ -388,10 +388,10 @@ function toTitleCase(str) {
 function getContext(queryResult, contextName) {
   return queryResult?.outputContexts?.find(c => c.name.includes(contextName));
 }
-function setContext(res, name, lifespan = 2, parameters = {}) {
+function setContext(res, name, lifespan = 2, parameters = {}, sessionId) {
   const outputContexts = [
     {
-      name: `projects/${PROJECT_ID}/agent/sessions/${SESSION_ID}/contexts/${name}`,
+      name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/${name}`,
       lifespanCount: lifespan,
       parameters
     }
