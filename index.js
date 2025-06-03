@@ -622,6 +622,11 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
+    const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
+    if (contextoEncerrado) {
+      console.log("🛑 Urgência já encerrada, ignorando nova mensagem.");
+      return res.status(200).send(); // Não responde nada
+    }
     const contextoNome = getContext(queryResult, 'aguardando_nome');
     const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
     // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
@@ -678,22 +683,13 @@ app.post('/zapi-webhook', async (req, res) => {
 
         await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
 
-        // Limpar contextos
-        await setContext(res, 'aguardando_nome', 0);
-        await setContext(res, 'aguardando_descricao', 0);
+        await setContext(res, 'urgencia_encerrada', 3, {}, sessionId); // 👈 trava para não repetir
 
-        return res.status(200).send({
-          outputContexts: [
-            {
-              name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando_nome`,
-              lifespanCount: 0
-            },
-            {
-              name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando_descricao`,
-              lifespanCount: 0
-            }
-          ]
-        });
+        // Limpar contextos
+        await setContext(res, 'aguardando_nome', 0, {}, sessionId);
+        await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
+
+        return res.status(200).send();
       }
 
       // Se algo deu errado e chegou aqui, repete a pergunta anterior
@@ -703,7 +699,6 @@ app.post('/zapi-webhook', async (req, res) => {
       await sendZapiMessage(fallbackText);
       return res.status(200).send();
     }
-
 
     if (intent === 'VerificarListaConvenios') {
       const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
