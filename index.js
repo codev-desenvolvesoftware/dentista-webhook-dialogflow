@@ -681,14 +681,16 @@ app.post('/zapi-webhook', async (req, res) => {
           intent
         });
 
-        await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
+        await Promise.all([
+          sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`),
+          // 1. Limpa os contextos anteriores
+          setContext(res, 'aguardando_nome', 0, {}, sessionId),
+          setContext(res, 'aguardando_descricao', 0, {}, sessionId),
+          // 2. Só depois, marca como encerrado
+          setContext(res, 'urgencia_encerrada', 3, {}, sessionId),
+        ]);
 
-        await setContext(res, 'urgencia_encerrada', 3, {}, sessionId); // 👈 trava para não repetir
-
-        // Limpar contextos
-        await setContext(res, 'aguardando_nome', 0, {}, sessionId);
-        await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
-
+        console.log("✅ Mensagem enviada e contextos atualizados.");
         return res.status(200).send();
       }
 
