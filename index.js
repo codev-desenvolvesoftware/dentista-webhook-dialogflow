@@ -623,40 +623,37 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'Urgencia') {
-      console.log("Intent recebida:", intent);
+      console.log("📥 Intent: Urgencia");
 
-      const contextoAnterior = getContext(queryResult, 'aguardando_nome') || getContext(queryResult, 'aguardando_descricao');
       const rawMessage = message?.text?.message || '';
       const fallback = extractFallbackFields(message);
       const nomeBruto = parameters?.nome || fallback.nome;
       const descricaoBruta = parameters?.descricao || rawMessage.trim();
 
-      console.log("Parâmetros recebidos do Dialogflow:", parameters);
-      console.log("Fallback extraído:", fallback);
-      console.log("Raw message:", rawMessage);
+      const contextoNome = getContext(queryResult, 'aguardando_nome');
+      const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
 
-      // Se estamos aguardando o nome
-      if (!nomeBruto) {
-        console.log("!nomeBruto");
-        await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:')
+      const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
+      const descricao = (descricaoBruta || '').trim();
+
+      // Fluxo inicial - solicitar nome
+      if (!contextoNome && !contextoDescricao && !nome) {
+        await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
         await setContext(res, 'aguardando_nome', 2, {}, sessionId);
         return res.status(200).send();
       }
 
-      // Se já temos o nome e estamos aguardando a descrição
-      if (contextoAnterior?.name.endsWith('aguardando_descricao')) {
-        const nome = capitalizarNomeCompleto(nomeBruto.trim().split(/\s+/).slice(0, 4).join(' '));
-        const descricao = descricaoBruta.trim();
-        if (!descricao) {
-          console.log("!descricao");
-          await sendZapiMessage(`Obrigado, ${nome}! Agora me informe *qual é o problema, o que está sentindo*?`);
-          await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
-          return res.status(200).send();  
-        }
-        console.log("Nome e descrição recebidos:", { nome, descricao });
+      // Depois do nome, solicitar descrição
+      if (contextoNome && !contextoDescricao && !descricao) {
+        await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
+        await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
+        return res.status(200).send();
+      }
 
-
+      // Após nome e descrição — finalizar
+      if (nome && descricao) {
         await notifyTelegram(cleanPhone, `🆘 Urgência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Descrição: ${descricao}`);
+
         await logToSheet({
           phone: cleanPhone,
           message: descricao,
@@ -665,15 +662,20 @@ app.post('/zapi-webhook', async (req, res) => {
           intent
         });
 
-        const resposta = `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`;
-        await sendMessage(phone, resposta);
+        await sendMessage(phone, `Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
 
-        // Limpa contexto para evitar erros
+        // Limpar contextos
         await setContext(res, 'aguardando_nome', 0);
         await setContext(res, 'aguardando_descricao', 0);
 
         return res.status(200).send();
       }
+
+      // Se algo deu errado e chegou aqui, repete a pergunta anterior
+      const fallbackText = !nome ? 'Pode me informar seu *nome* por favor?'
+        : 'Me diga *qual é o problema, o que está sentindo*?';
+      await sendZapiMessage(fallbackText);
+      return res.status(200).send();
     }
 
 
