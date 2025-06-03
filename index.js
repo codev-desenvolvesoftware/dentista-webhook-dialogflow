@@ -630,8 +630,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const rawMessage = message?.text?.message || '';
       const fallback = extractFallbackFields(message);
-      const nomeBruto = parameters?.nome || fallback.nome;
-      const descricaoBruta = parameters?.descricao || rawMessage.trim();
+      const nomeBruto = parameters?.nome || contextoNome?.parameters?.nome || fallback.nome;
+      const descricaoBruta = parameters?.descricao || contextoDescricao?.parameters?.descricao || rawMessage.trim();
 
       const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
       const descricao = (descricaoBruta || '').trim();
