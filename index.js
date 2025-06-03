@@ -624,9 +624,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
     const contextoNome = getContext(queryResult, 'aguardando_nome');
     const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
-    const contextoDescricaoAtivo = contextoDescricao && contextoDescricao.lifespanCount > 0;
     // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
-    if (intent === 'Urgencia' || contextoNome || contextoDescricaoAtivo) {
+    if (intent === 'Urgencia' || intent === 'UrgenciaCapturaNome' || intent === 'UrgenciaCapturaDescricao' || contextoNome || contextoDescricao) {
       console.log("📥 Intent: Urgencia");
 
       const rawMessage = message?.text?.message || '';
