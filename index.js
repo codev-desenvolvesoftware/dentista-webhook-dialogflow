@@ -553,9 +553,6 @@ app.post('/zapi-webhook', async (req, res) => {
       });
     };
 
-    const ctxConsulta = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-consulta`;
-    const ctxAvaliacao = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-avaliacao`;
-
     // 📆 Função genérica para lidar com agendamento
     const handleAgendamento = async (tipoAgendamento) => {
       try {
