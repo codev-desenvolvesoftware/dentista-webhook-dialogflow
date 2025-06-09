@@ -160,6 +160,30 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
   }
 }
 
+// 📆 Função para confirmar agendamento
+async function confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada }) {
+  await criarEventoGoogleCalendar({
+    nome,
+    telefone,
+    dataISO,
+    hora,
+    tipo: tipoAgendamento,
+    procedimento,
+    convenio
+  });
+  await logToAgendamentosSheet({
+    nome,
+    telefone,
+    tipoAgendamento,
+    data: dataFormatada,
+    hora,
+    procedimento,
+    convenio
+  });
+
+  await sendZapiMessage(`Perfeito, ${nome}! Sua ${tipoAgendamento} para *${procedimento}* está agendada para *${dataFormatada}* às *${hora}*. Até lá! 🩵`);
+}
+
 // 📆 Função para consultar horários disponíveis do Google Calendar
 async function listarHorariosDisponiveis(dateISO) {
   const auth = await getCalendarAuthClient();
@@ -188,7 +212,7 @@ async function listarHorariosDisponiveis(dateISO) {
   const endOfDay = new Date(date.setHours(23, 59, 59, 999)).toISOString();
 
   const events = await calendar.events.list({
-    calendarId: 'primary',
+    calendarId: process.env.GOOGLE_CALENDAR_ID,
     timeMin: startOfDay,
     timeMax: endOfDay,
     singleEvents: true,
@@ -570,11 +594,12 @@ app.post('/zapi-webhook', async (req, res) => {
       });
     };
 
-    // 📆 Função genérica para lidar com agendamento
+    // 📆 Função genérica para lidar com agendamento, interrompendo se horário estiver ocupado
     const handleAgendamento = async (tipoAgendamento) => {
       try {
         const fallback = extractFallbackFields(message);
         const rawMessage = message?.text?.message || '';
+        const { DateTime } = require('luxon');
 
         // Nome
         const nomeRaw = parameters?.nome?.name
@@ -582,56 +607,42 @@ app.post('/zapi-webhook', async (req, res) => {
           || fallback.nome
           || 'Cliente';
 
-        const nomeFormatado = capitalizarNomeCompleto(
+        const nome = capitalizarNomeCompleto(
           nomeRaw.trim().split(/\s+/).slice(0, 4).join(' ')
         );
 
         // Procedimento
-        const procedimentoRaw = Array.isArray(parameters?.procedimento)
-          ? parameters.procedimento.join(' ')
-          : parameters?.procedimento;
-
-        const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
+        const procedimento = parameters?.procedimento || fallback.procedimento || 'procedimento a ser analisado';
 
         // Data
         const dataISO = (() => {
           const dateParam = parameters?.data || fallback.data;
           if (!dateParam) return null;
-          const d = new Date(dateParam);
-          return d.toISOString().split('T')[0]; // apenas a data
+          const dt = DateTime.fromISO(dateParam, { zone: 'America/Sao_Paulo' });
+          return dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
         })();
-
+        if (!dataISO) {
+          await sendZapiMessage("Não entendi a data informada. Por favor, envie novamente no formato DD/MM. Exemplo: 02/10");
+          return;
+        }
         const dataFormatada = formatarDataHora(dataISO, 'data');
 
         // Hora
-        const { DateTime } = require('luxon');
-        let hora = (() => {
-          const horaTextoRegex = /(\d{1,2})([:h]?)(\d{2})?/gi;
-          const matches = [...rawMessage.matchAll(horaTextoRegex)];
+        const hora = (() => {
+          const regex = /(\d{1,2})([:h]?)(\d{2})?/gi;
+          const matches = [...rawMessage.matchAll(regex)];
           if (matches.length > 0) {
-            const ultima = matches[matches.length - 1];
-            const h = ultima[1].padStart(2, '0');
-            const m = ultima[3] ? ultima[3].padStart(2, '0') : '00';
+            const h = matches[0][1].padStart(2, '0');
+            const m = matches[0][3] ? matches[0][3].padStart(2, '0') : '00';
             return `${h}:${m}`;
           }
-
-          const fallbackHora = formatarDataHora(fallback.hora, 'hora');
-          if (fallbackHora && fallbackHora !== 'Hora inválida') return fallbackHora;
-
-          if (parameters?.hora && parameters?.data) {
-            try {
-              const horaLuxon = DateTime.fromISO(parameters.hora, { zone: 'utc' }).setZone('America/Sao_Paulo');
-              const dataLuxon = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
-              if (horaLuxon.isValid && dataLuxon.isValid) {
-                return horaLuxon.toFormat('HH:mm');
-              }
-            } catch (e) {
-              console.error("Erro ao combinar data e hora:", e);
-            }
-          }
-
-          return 'a definir';
+          const horaFallback = formatarDataHora(fallback.hora, 'hora');
+          return horaFallback !== 'Hora inválida' ? horaFallback : null;
         })();
+        if (!hora) {
+          await sendZapiMessage("Me confirma por gentileza o horário que gostaria de agendar?");
+          return;
+        }
 
         // Convênio
         const contextoConvenio = queryResult.outputContexts?.find(ctx =>
@@ -640,44 +651,26 @@ app.post('/zapi-webhook', async (req, res) => {
         const convenio = contextoConvenio?.parameters?.convenio ||
           contextoConvenio?.parameters?.convenio_detectado || '-';
 
-        // 🔍 Verifica se horário está disponível
+        // 🔍 Verifica disponibilidade
         const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+
         if (!horariosDisponiveis.includes(hora)) {
-          await sendZapiMessage(`⚠️ O horário ${hora} não está mais disponível. Tente um destes:\n${horariosDisponiveis.join('\n')}`);
+          await setContext(res, 'aguardando_horario_disponivel', 2, {
+            nome, telefone: cleanPhone, dataISO, tipoAgendamento, procedimento, convenio
+          }, sessionId);
+
+          await sendZapiMessage(`⚠️ Este horário *${hora}* está ocupado.\nEscolha um destes horários disponíveis para ${formatarDataHora(dataISO, 'data')}:\n\n` + horariosDisponiveis.join('\n'));
           return;
         }
 
-        // 🗓️ Criar evento no Google Calendar
-        await criarEventoGoogleCalendar({
-          nome: nomeFormatado,
-          telefone: cleanPhone,
-          dataISO,
-          hora,
-          tipo: tipoAgendamento,
-          procedimento,
-          convenio
-        });
-
-        // 📝 Registrar no Google Sheets
-        await logToAgendamentosSheet({
-          nome: nomeFormatado,
-          telefone: cleanPhone,
-          tipoAgendamento,
-          data: dataFormatada,
-          hora,
-          procedimento,
-          convenio
-        });
-
-        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${dataFormatada} às ${hora}. Até lá 🩵`;
-        await sendZapiMessage(respostaFinal);
+        // 🗓️ Criar evento + registrar no Sheets
+        await confirmarAgendamento({ nome, telefone: cleanPhone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
 
       } catch (err) {
         console.error("❌ Erro no agendamento:", err.message);
-        await sendZapiMessage("Tivemos um problema ao concluir o agendamento. Por favor, tente novamente.");
+        await sendZapiMessage("Tivemos um problema ao concluir o agendamento. Tente novamente.");
       }
     };
-
 
     // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
     if (normalize(message) === 'sim') {
@@ -707,6 +700,28 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'AgendarConsultaFinal') {
       await handleAgendamento('consulta');
       return res.status(200).send("OK");
+    }
+
+    if (intent === 'EscolherHorarioDisponivel') {
+      const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
+      const hora = parameters?.hora || extractFallbackFields(message).hora;
+
+      if (!ctx || !hora) {
+        await sendZapiMessage("Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 14:30");
+        return res.status(200).send("Erro de contexto ou hora");
+      }
+
+      const { nome, telefone, dataISO, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+      const dataFormatada = formatarDataHora(dataISO, 'data');
+
+      const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+      if (!horariosDisponiveis.includes(hora)) {
+        await sendZapiMessage(`⚠️ Esse horário também está ocupado.\nEscolha um desses horários disponíveis:\n` + horariosDisponiveis.join('\n'));
+        return res.status(200).send("Horário inválido");
+      }
+
+      await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
+      return res.status(200).send("Agendamento confirmado");
     }
 
     if (intent === 'FalarComAtendente') {
