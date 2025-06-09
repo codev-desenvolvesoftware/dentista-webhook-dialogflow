@@ -207,21 +207,38 @@ async function listarHorariosDisponiveis(dateISO) {
 
 // 📆 Função para agendamento no Google Calendar
 async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipo, procedimento, convenio }) {
-  const auth = await getCalendarAuthClient();
-  const calendar = google.calendar({ version: 'v3', auth });
+  try {
+    console.log('📤 Preparando agendamento no Google Calendar...');
+    console.log('📌 Dados:', { nome, telefone, dataISO, hora, tipo, procedimento, convenio });
 
-  const start = new Date(`${dataISO}T${hora}:00-03:00`);
-  const end = new Date(start.getTime() + 30 * 60000); // duração de 30 min
+    const auth = await getCalendarAuthClient();
+    const calendar = google.calendar({ version: 'v3', auth });
 
-  return calendar.events.insert({
-    calendarId: 'primary',
-    requestBody: {
+    const start = new Date(`${dataISO}T${hora}:00-03:00`);
+    const end = new Date(start.getTime() + 30 * 60000); // duração 30 min
+
+    const evento = {
       summary: `${tipo.toUpperCase()} - ${nome}`,
       description: `Procedimento: ${procedimento}\nConvênio: ${convenio}\nTelefone: ${telefone}`,
       start: { dateTime: start.toISOString(), timeZone: 'America/Sao_Paulo' },
       end: { dateTime: end.toISOString(), timeZone: 'America/Sao_Paulo' },
-    }
-  });
+    };
+
+    console.log('📨 Enviando evento para Google Calendar...', JSON.stringify(evento, null, 2));
+
+    const response = await calendar.events.insert({
+      calendarId: process.env.GOOGLE_CALENDAR_ID,
+      requestBody: evento
+    });
+
+    console.log('✅ Evento criado com sucesso no Google Calendar');
+    console.log('🔗 Link do evento:', response.data.htmlLink);
+
+    return response;
+  } catch (error) {
+    console.error('❌ Erro ao criar evento no Google Calendar:', error.message);
+    throw error;
+  }
 }
 
 // Notifica Telegram
@@ -659,7 +676,7 @@ app.post('/zapi-webhook', async (req, res) => {
         console.error("❌ Erro no agendamento:", err.message);
         await sendZapiMessage("Tivemos um problema ao concluir o agendamento. Por favor, tente novamente.");
       }
-    };  
+    };
 
 
     // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
