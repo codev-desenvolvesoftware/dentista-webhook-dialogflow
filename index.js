@@ -348,19 +348,20 @@ function extractFallbackFields(message) {
 
 // Formata data e hora
 function formatarDataHora(valor, tipo) {
+  const { DateTime } = require('luxon');
+
   if (typeof valor !== 'string') return '';
 
   valor = valor.normalize("NFKD").replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
   if (!valor) return tipo === 'data' ? 'Data inválida' : '';
 
   try {
-
     if (tipo === 'hora') {
-      // Verifica se é uma string ISO (com "T" e possível timezone)
       const isoRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/;
       if (isoRegex.test(valor)) {
         try {
-          const horaLuxon = DateTime.fromISO(valor, { zone: 'America/Sao_Paulo' });
+          // ✅ MANTÉM a hora do valor original (com fuso)
+          const horaLuxon = DateTime.fromISO(valor, { setZone: true });
           if (!horaLuxon.isValid) return 'Hora inválida';
           return horaLuxon.toFormat('HH:mm');
         } catch (err) {
@@ -368,16 +369,14 @@ function formatarDataHora(valor, tipo) {
         }
       }
 
-      // Para valores não ISO, apenas remove espaços e converte para minúsculas
+      // Hora não ISO — tentar regex
       valor = valor.toLowerCase().trim();
-
-      // Array de expressões regulares para formatos válidos
       const horaRegexes = [
         /^(\d{1,2})h(\d{1,2})$/,   // Ex: 10h30
         /^(\d{1,2})h$/,            // Ex: 10h
-        /^(\d{1,2}):(\d{1,2})$/,    // Ex: 10:30
-        /^(\d{1,2}):(\d{1,2})h$/,   // Ex: 10:30h
-        /^(\d{2})(\d{2})$/,         // Ex: 1030
+        /^(\d{1,2}):(\d{1,2})$/,   // Ex: 10:30
+        /^(\d{1,2}):(\d{1,2})h$/,  // Ex: 10:30h
+        /^(\d{2})(\d{2})$/,        // Ex: 1030
         /^(\d{1,2})$/              // Ex: 10
       ];
 
@@ -391,14 +390,11 @@ function formatarDataHora(valor, tipo) {
         }
       }
 
-      // Se nenhum dos formatos foi validado, retorna erro
       if (horas === undefined) return 'Hora inválida';
 
-      // Pad com zeros se necessário
       horas = horas.padStart(2, '0');
       minutos = minutos.padStart(2, '0');
 
-      // Validação extra: valores reais para hora e minuto
       const h = parseInt(horas, 10);
       const m = parseInt(minutos, 10);
       if (h > 23 || m > 59) return 'Hora inválida';
@@ -408,7 +404,6 @@ function formatarDataHora(valor, tipo) {
 
     if (tipo === 'data') {
       valor = valor.trim();
-
       const formatos = [
         { regex: /^\d{4}-\d{2}-\d{2}$/, ordem: ['ano', 'mes', 'dia'] },
         { regex: /^\d{2}\/\d{2}\/\d{4}$/, ordem: ['dia', 'mes', 'ano'] },
@@ -434,17 +429,12 @@ function formatarDataHora(valor, tipo) {
         }
       }
 
-      // Só aceita ISO 8601 completo com dia, ex: "2025-05-30T12:00:00-03:00"
-      if (!/^\d{4}-\d{2}-\d{2}([T\s].*)?$/.test(valor.trim())) return 'Data inválida';
+      if (!/^\d{4}-\d{2}-\d{2}([T\s].*)?$/.test(valor)) return 'Data inválida';
 
-      const dateObj = new Date(valor);
-      if (isNaN(dateObj.getTime())) return 'Data inválida';
+      const date = DateTime.fromISO(valor, { setZone: true });
+      if (!date.isValid) return 'Data inválida';
 
-      const dia = dateObj.getUTCDate().toString().padStart(2, '0');
-      const mes = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
-      const ano = dateObj.getUTCFullYear();
-
-      return `${dia}/${mes}/${ano}`;
+      return date.toFormat('dd/MM/yyyy');
     }
 
     return '';
@@ -642,26 +632,25 @@ app.post('/zapi-webhook', async (req, res) => {
         const hora = (() => {
           const { DateTime } = require('luxon');
 
-          // 1. Se houver parâmetro ISO de hora e de data
+          // 1. Combina hora e data com zona correta
           if (parameters?.hora && parameters?.data) {
             try {
-              const horaIso = DateTime.fromISO(parameters.hora, { zone: 'utc' });
-              const dataIso = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
+              const horaLuxon = DateTime.fromISO(parameters.hora, { setZone: true }); // mantém -03:00
+              const dataLuxon = DateTime.fromISO(parameters.data, { setZone: true });
 
-              if (horaIso.isValid && dataIso.isValid) {
-                // Combina a data certa com a hora certa (sem data contaminada)
-                const combinada = dataIso.set({
-                  hour: horaIso.hour,
-                  minute: horaIso.minute
+              if (horaLuxon.isValid && dataLuxon.isValid) {
+                const combinada = dataLuxon.set({
+                  hour: horaLuxon.hour,
+                  minute: horaLuxon.minute
                 });
                 return combinada.toFormat('HH:mm');
               }
             } catch (e) {
-              console.error('Erro ao combinar hora/data do Dialogflow:', e);
+              console.error('Erro ao combinar hora/data:', e);
             }
           }
 
-          // 2. Tenta extrair do texto (ex: "10:00")
+          // 2. Regex no texto do usuário
           const regex = /(\d{1,2})([:h]?)(\d{2})?/gi;
           const matches = [...rawMessage.matchAll(regex)];
           if (matches.length > 0) {
@@ -670,7 +659,7 @@ app.post('/zapi-webhook', async (req, res) => {
             return `${h}:${m}`;
           }
 
-          // 3. Fallback do campo hora extraído manualmente
+          // 3. Fallback
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           return horaFallback !== 'Hora inválida' ? horaFallback : null;
         })();
