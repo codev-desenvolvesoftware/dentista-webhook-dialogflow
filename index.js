@@ -239,14 +239,14 @@ async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipo, 
     const auth = await getCalendarAuthClient();
     const calendar = google.calendar({ version: 'v3', auth });
 
-    const start = new Date(`${dataISO}T${hora}:00-03:00`);
-    const end = new Date(start.getTime() + 30 * 60000); // duração 30 min
+    const start = DateTime.fromISO(`${dataISO}T${hora}`, { zone: 'America/Sao_Paulo' });
+    const end = start.plus({ minutes: 30 }); // duração 30 min
 
     const evento = {
       summary: `${tipo.toUpperCase()} - ${nome}`,
       description: `Procedimento: ${procedimento}\nConvênio: ${convenio}\nTelefone: ${telefone}`,
-      start: { dateTime: start.toISOString(), timeZone: 'America/Sao_Paulo' },
-      end: { dateTime: end.toISOString(), timeZone: 'America/Sao_Paulo' },
+      start: { dateTime: start.toISO(), timeZone: 'America/Sao_Paulo' },
+      end: { dateTime: end.toISO(), timeZone: 'America/Sao_Paulo' },
     };
 
     console.log('📨 Enviando evento para Google Calendar...', JSON.stringify(evento, null, 2));
