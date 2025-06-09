@@ -640,18 +640,28 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 🕒 Hora
         const hora = (() => {
-          // 1. Se vier ISO válido no parameters.hora
-          const rawHoraParam = parameters?.hora;
           const { DateTime } = require('luxon');
 
-          if (rawHoraParam && typeof rawHoraParam === 'string' && rawHoraParam.includes('T')) {
-            const dtHora = DateTime.fromISO(rawHoraParam, { zone: 'America/Sao_Paulo' });
-            if (dtHora.isValid) {
-              return dtHora.toFormat('HH:mm');
+          // 1. Se houver parâmetro ISO de hora e de data
+          if (parameters?.hora && parameters?.data) {
+            try {
+              const horaIso = DateTime.fromISO(parameters.hora, { zone: 'utc' });
+              const dataIso = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
+
+              if (horaIso.isValid && dataIso.isValid) {
+                // Combina a data certa com a hora certa (sem data contaminada)
+                const combinada = dataIso.set({
+                  hour: horaIso.hour,
+                  minute: horaIso.minute
+                });
+                return combinada.toFormat('HH:mm');
+              }
+            } catch (e) {
+              console.error('Erro ao combinar hora/data do Dialogflow:', e);
             }
           }
 
-          // 2. Se conseguir capturar do texto com regex
+          // 2. Tenta extrair do texto (ex: "10:00")
           const regex = /(\d{1,2})([:h]?)(\d{2})?/gi;
           const matches = [...rawMessage.matchAll(regex)];
           if (matches.length > 0) {
@@ -660,7 +670,7 @@ app.post('/zapi-webhook', async (req, res) => {
             return `${h}:${m}`;
           }
 
-          // 3. Tenta fallback extraído do texto
+          // 3. Fallback do campo hora extraído manualmente
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           return horaFallback !== 'Hora inválida' ? horaFallback : null;
         })();
