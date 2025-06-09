@@ -724,6 +724,32 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("Agendamento confirmado");
     }
 
+    // ⚠️ Nenhuma intent reconhecida (intent === undefined) e contexto de horário disponível ativo
+    if (!intent && getContext(queryResult, 'aguardando_horario_disponivel')) {
+      const mensagem = message?.text?.message || '';
+      const regex = /(\d{1,2})[:h]?(\d{2})?/;
+      const match = mensagem.match(regex);
+
+      if (match) {
+        const h = match[1].padStart(2, '0');
+        const m = match[2] ? match[2].padStart(2, '0') : '00';
+        const hora = `${h}:${m}`;
+
+        const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
+        const { nome, telefone, dataISO, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+        const dataFormatada = formatarDataHora(dataISO, 'data');
+
+        const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+        if (!horariosDisponiveis.includes(hora)) {
+          await sendZapiMessage(`⚠️ Esse horário também está ocupado.\nEscolha um desses:\n` + horariosDisponiveis.join('\n'));
+          return res.status(200).send("Horário inválido");
+        }
+
+        await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
+        return res.status(200).send("Agendamento confirmado (via fallback)");
+      }
+    }
+
     if (intent === 'FalarComAtendente') {
       try {
         await notifyTelegram(cleanPhone, message);
