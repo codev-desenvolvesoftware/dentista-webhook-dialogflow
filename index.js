@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const { GoogleAuth } = require('google-auth-library');
+const { DateTime } = require('luxon');
 const { google } = require('googleapis');
 const axios = require('axios');
 require('dotenv').config();
@@ -208,8 +209,8 @@ async function listarHorariosDisponiveis(dateISO) {
   else if (diaSemana === 0) return []; // domingo
   else horariosPossiveis = horariosBase.weekday;
 
-  const startOfDay = new Date(date.setHours(0, 0, 0, 0)).toISOString();
-  const endOfDay = new Date(date.setHours(23, 59, 59, 999)).toISOString();
+  const startOfDay = DateTime.fromISO(dateISO, { zone: 'America/Sao_Paulo' }).startOf('day').toISO();
+  const endOfDay = DateTime.fromISO(dateISO, { zone: 'America/Sao_Paulo' }).endOf('day').toISO();
 
   const events = await calendar.events.list({
     calendarId: process.env.GOOGLE_CALENDAR_ID,
@@ -343,8 +344,6 @@ function formatarDataHora(valor, tipo) {
   if (!valor) return tipo === 'data' ? 'Data inválida' : '';
 
   try {
-
-    const { DateTime } = require('luxon');
 
     if (tipo === 'hora') {
       // Verifica se é uma string ISO (com "T" e possível timezone)
@@ -599,7 +598,6 @@ app.post('/zapi-webhook', async (req, res) => {
       try {
         const fallback = extractFallbackFields(message);
         const rawMessage = message?.text?.message || '';
-        const { DateTime } = require('luxon');
 
         // Nome
         const nomeRaw = parameters?.nome?.name
@@ -704,7 +702,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'EscolherHorarioDisponivel') {
       const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-      const hora = parameters?.hora || extractFallbackFields(message).hora;
+      let hora = parameters?.hora;
+      hora = formatarDataHora(hora, 'hora');
 
       if (!ctx || !hora) {
         await sendZapiMessage("Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 14:30");
