@@ -41,7 +41,7 @@ let sheetsAuthClient = null;
 let accessToken = null;
 let tokenExpiry = 0;
 
-// Autenticação Dialogflow
+// 🔐 Autenticação Dialogflow
 async function getDialogflowAccessToken() {
   if (!dialogflowAuthClient) {
     const credentials = JSON.parse(Buffer.from(GOOGLE_DIALOGFLOW_CREDENTIALS_BASE64, 'base64').toString('utf8'));
@@ -57,7 +57,21 @@ async function getDialogflowAccessToken() {
   tokenExpiry = Date.now() + 50 * 60 * 1000;
 }
 
-// Autenticação Google Sheets
+// 🔐 Autenticação Google Calendar
+let calendarAuthClient = null;
+async function getCalendarAuthClient() {
+  if (!calendarAuthClient) {
+    const credentials = JSON.parse(Buffer.from(process.env.GOOGLE_CALENDAR_CREDENTIALS_BASE64, 'base64').toString('utf8'));
+    const auth = new GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/calendar']
+    });
+    calendarAuthClient = await auth.getClient();
+  }
+  return calendarAuthClient;
+}
+
+// 🔐 Autenticação Google Sheets
 async function getSheetsAuthClient() {
   if (!sheetsAuthClient) {
     const credentials = JSON.parse(Buffer.from(GOOGLE_SHEETS_CREDENTIALS_BASE64, 'base64').toString('utf8'));
@@ -144,6 +158,70 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
   } catch (err) {
     console.error("❌ Erro ao registrar agendamento no Google Sheets:", err.message);
   }
+}
+
+// 📆 Função para consultar horários disponíveis do Google Calendar
+async function listarHorariosDisponiveis(dateISO) {
+  const auth = await getCalendarAuthClient();
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  const date = new Date(dateISO);
+  const diaSemana = date.getDay();
+
+  // Regras de horário
+  const horariosBase = {
+    weekday: Array.from({ length: 20 }, (_, i) => {
+      const h = 8 + Math.floor(i / 2);
+      const m = i % 2 === 0 ? '00' : '30';
+      return `${String(h).padStart(2, '0')}:${m}`;
+    }),
+    saturday: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30'],
+    sunday: []
+  };
+
+  let horariosPossiveis;
+  if (diaSemana === 6) horariosPossiveis = horariosBase.saturday;
+  else if (diaSemana === 0) return []; // domingo
+  else horariosPossiveis = horariosBase.weekday;
+
+  const startOfDay = new Date(date.setHours(0, 0, 0, 0)).toISOString();
+  const endOfDay = new Date(date.setHours(23, 59, 59, 999)).toISOString();
+
+  const events = await calendar.events.list({
+    calendarId: 'primary',
+    timeMin: startOfDay,
+    timeMax: endOfDay,
+    singleEvents: true,
+    orderBy: 'startTime'
+  });
+
+  const eventos = events.data.items || [];
+  const horariosOcupados = eventos.map(e => {
+    const hora = new Date(e.start.dateTime).toTimeString().slice(0, 5);
+    return hora;
+  });
+
+  const horariosDisponiveis = horariosPossiveis.filter(h => !horariosOcupados.includes(h));
+  return horariosDisponiveis;
+}
+
+// 📆 Função para agendamento no Google Calendar
+async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipo, procedimento, convenio }) {
+  const auth = await getCalendarAuthClient();
+  const calendar = google.calendar({ version: 'v3', auth });
+
+  const start = new Date(`${dataISO}T${hora}:00-03:00`);
+  const end = new Date(start.getTime() + 30 * 60000); // duração de 30 min
+
+  return calendar.events.insert({
+    calendarId: 'primary',
+    requestBody: {
+      summary: `${tipo.toUpperCase()} - ${nome}`,
+      description: `Procedimento: ${procedimento}\nConvênio: ${convenio}\nTelefone: ${telefone}`,
+      start: { dateTime: start.toISOString(), timeZone: 'America/Sao_Paulo' },
+      end: { dateTime: end.toISOString(), timeZone: 'America/Sao_Paulo' },
+    }
+  });
 }
 
 // Notifica Telegram
@@ -478,36 +556,42 @@ app.post('/zapi-webhook', async (req, res) => {
     const ctxConsulta = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-consulta`;
     const ctxAvaliacao = `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/aguardando-sim-avaliacao`;
 
+    // 📆 Função genérica para lidar com agendamento
     const handleAgendamento = async (tipoAgendamento) => {
       try {
         const fallback = extractFallbackFields(message);
         const rawMessage = message?.text?.message || '';
 
-        // 🧠 Nome
+        // Nome
         const nomeRaw = parameters?.nome?.name
           || (Array.isArray(parameters?.nome) ? parameters.nome.join(' ') : parameters?.nome)
           || fallback.nome
           || 'Cliente';
 
-        const nomeLimitado = nomeRaw.trim().split(/\s+/).slice(0, 4).join(' ');
-        const nomeFormatado = capitalizarNomeCompleto(nomeLimitado);
-        console.log('🔍 nomeFormatado:', nomeFormatado);
+        const nomeFormatado = capitalizarNomeCompleto(
+          nomeRaw.trim().split(/\s+/).slice(0, 4).join(' ')
+        );
 
-        // 🧠 Procedimento
+        // Procedimento
         const procedimentoRaw = Array.isArray(parameters?.procedimento)
           ? parameters.procedimento.join(' ')
           : parameters?.procedimento;
+
         const procedimento = procedimentoRaw || fallback.procedimento || 'procedimento a ser analisado';
 
-        // 📅 Data
-        const data = formatarDataHora(parameters?.data || fallback.data, 'data');
+        // Data
+        const dataISO = (() => {
+          const dateParam = parameters?.data || fallback.data;
+          if (!dateParam) return null;
+          const d = new Date(dateParam);
+          return d.toISOString().split('T')[0]; // apenas a data
+        })();
 
-        // 🕓 Hora com fallback
-        console.log('🕵️ Hora recebida bruta do Dialogflow:', parameters?.hora);
+        const dataFormatada = formatarDataHora(dataISO, 'data');
+
+        // Hora
+        const { DateTime } = require('luxon');
         let hora = (() => {
-          const { DateTime } = require('luxon');
-
-          // 🕵️ Tenta extrair hora do texto do usuário
           const horaTextoRegex = /(\d{1,2})([:h]?)(\d{2})?/gi;
           const matches = [...rawMessage.matchAll(horaTextoRegex)];
           if (matches.length > 0) {
@@ -517,58 +601,68 @@ app.post('/zapi-webhook', async (req, res) => {
             return `${h}:${m}`;
           }
 
-          // 🕵️ Se não achou no texto, tenta fallback (Z-API)
-          const horaFallback = formatarDataHora(fallback.hora, 'hora');
-          if (horaFallback && horaFallback !== 'Hora inválida') return horaFallback;
+          const fallbackHora = formatarDataHora(fallback.hora, 'hora');
+          if (fallbackHora && fallbackHora !== 'Hora inválida') return fallbackHora;
 
-          // 🕓 Se ainda não encontrou, tenta pelos parâmetros do Dialogflow
           if (parameters?.hora && parameters?.data) {
             try {
-              // Usa Luxon com timezone explícito
               const horaLuxon = DateTime.fromISO(parameters.hora, { zone: 'utc' }).setZone('America/Sao_Paulo');
               const dataLuxon = DateTime.fromISO(parameters.data, { zone: 'America/Sao_Paulo' });
-
               if (horaLuxon.isValid && dataLuxon.isValid) {
-                const combinada = dataLuxon.set({
-                  hour: horaLuxon.hour,
-                  minute: horaLuxon.minute
-                });
-                return combinada.toFormat('HH:mm');
+                return horaLuxon.toFormat('HH:mm');
               }
             } catch (e) {
-              console.error("Erro ao combinar data e hora com timezone:", e);
+              console.error("Erro ao combinar data e hora:", e);
             }
           }
 
           return 'a definir';
         })();
 
-
-        // 🔍 Buscar convênio no contexto (se houver)
+        // Convênio
         const contextoConvenio = queryResult.outputContexts?.find(ctx =>
           ctx.parameters?.convenio || ctx.parameters?.convenio_detectado
         );
         const convenio = contextoConvenio?.parameters?.convenio ||
-          contextoConvenio?.parameters?.convenio_detectado ||
-          '-';
+          contextoConvenio?.parameters?.convenio_detectado || '-';
 
-        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${data} às ${hora}. Até lá 🩵`;
+        // 🔍 Verifica se horário está disponível
+        const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+        if (!horariosDisponiveis.includes(hora)) {
+          await sendZapiMessage(`⚠️ O horário ${hora} não está mais disponível. Tente um destes:\n${horariosDisponiveis.join('\n')}`);
+          return;
+        }
 
+        // 🗓️ Criar evento no Google Calendar
+        await criarEventoGoogleCalendar({
+          nome: nomeFormatado,
+          telefone: cleanPhone,
+          dataISO,
+          hora,
+          tipo: tipoAgendamento,
+          procedimento,
+          convenio
+        });
+
+        // 📝 Registrar no Google Sheets
         await logToAgendamentosSheet({
           nome: nomeFormatado,
           telefone: cleanPhone,
           tipoAgendamento,
-          data,
+          data: dataFormatada,
           hora,
           procedimento,
           convenio
         });
 
+        const respostaFinal = `Perfeito, ${nomeFormatado}! Sua ${tipoAgendamento} para ${procedimento} está agendada para ${dataFormatada} às ${hora}. Até lá 🩵`;
         await sendZapiMessage(respostaFinal);
+
       } catch (err) {
         console.error("❌ Erro no agendamento:", err.message);
+        await sendZapiMessage("Tivemos um problema ao concluir o agendamento. Por favor, tente novamente.");
       }
-    };
+    };  
 
 
     // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
