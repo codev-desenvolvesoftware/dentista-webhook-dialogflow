@@ -640,6 +640,18 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 🕒 Hora
         const hora = (() => {
+          // 1. Se vier ISO válido no parameters.hora
+          const rawHoraParam = parameters?.hora;
+          const { DateTime } = require('luxon');
+
+          if (rawHoraParam && typeof rawHoraParam === 'string' && rawHoraParam.includes('T')) {
+            const dtHora = DateTime.fromISO(rawHoraParam, { zone: 'America/Sao_Paulo' });
+            if (dtHora.isValid) {
+              return dtHora.toFormat('HH:mm');
+            }
+          }
+
+          // 2. Se conseguir capturar do texto com regex
           const regex = /(\d{1,2})([:h]?)(\d{2})?/gi;
           const matches = [...rawMessage.matchAll(regex)];
           if (matches.length > 0) {
@@ -647,9 +659,12 @@ app.post('/zapi-webhook', async (req, res) => {
             const m = matches[0][3] ? matches[0][3].padStart(2, '0') : '00';
             return `${h}:${m}`;
           }
+
+          // 3. Tenta fallback extraído do texto
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           return horaFallback !== 'Hora inválida' ? horaFallback : null;
         })();
+        console.log("🕓 Hora interpretada:", hora, "| Valor original:", parameters?.hora);
 
         if (!hora) {
           await sendZapiMessage("Me confirma por gentileza o horário que gostaria de agendar?");
