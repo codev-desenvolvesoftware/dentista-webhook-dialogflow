@@ -356,58 +356,48 @@ function formatarDataHora(valor, tipo) {
   if (!valor) return tipo === 'data' ? 'Data inválida' : '';
 
   try {
+    // === HORA ===
     if (tipo === 'hora') {
-      const isoRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?/;
+      const isoRegex = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
       if (isoRegex.test(valor)) {
-        try {
-          // ✅ MANTÉM a hora do valor original (com fuso)
-          const horaLuxon = DateTime.fromISO(valor, { setZone: true });
-          if (!horaLuxon.isValid) return 'Hora inválida';
-          return horaLuxon.toFormat('HH:mm');
-        } catch (err) {
-          return 'Erro ao processar hora ISO';
-        }
+        const dt = DateTime.fromISO(valor, { setZone: true });
+        if (!dt.isValid) return 'Hora inválida';
+        return dt.toFormat('HH:mm');
       }
 
-      // Hora não ISO — tentar regex
-      valor = valor.toLowerCase().trim();
+      // Testa formatos informais
       const horaRegexes = [
-        /^(\d{1,2})h(\d{1,2})$/,   // Ex: 10h30
-        /^(\d{1,2})h$/,            // Ex: 10h
-        /^(\d{1,2}):(\d{1,2})$/,   // Ex: 10:30
-        /^(\d{1,2}):(\d{1,2})h$/,  // Ex: 10:30h
-        /^(\d{2})(\d{2})$/,        // Ex: 1030
-        /^(\d{1,2})$/              // Ex: 10
+        /^(\d{1,2})h(\d{1,2})$/,   // 10h30
+        /^(\d{1,2})h$/,            // 10h
+        /^(\d{1,2}):(\d{1,2})$/,   // 10:30
+        /^(\d{1,2}):(\d{1,2})h$/,  // 10:30h
+        /^(\d{2})(\d{2})$/,        // 1030
+        /^(\d{1,2})$/              // 10
       ];
 
-      let horas, minutos;
       for (const regex of horaRegexes) {
         const match = valor.match(regex);
         if (match) {
-          horas = match[1];
-          minutos = match[2] || '00';
-          break;
+          let horas = match[1].padStart(2, '0');
+          let minutos = (match[2] || '00').padStart(2, '0');
+
+          const h = parseInt(horas, 10);
+          const m = parseInt(minutos, 10);
+          if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+            return `${horas}:${minutos}`;
+          }
         }
       }
 
-      if (horas === undefined) return 'Hora inválida';
-
-      horas = horas.padStart(2, '0');
-      minutos = minutos.padStart(2, '0');
-
-      const h = parseInt(horas, 10);
-      const m = parseInt(minutos, 10);
-      if (h > 23 || m > 59) return 'Hora inválida';
-
-      return `${horas}:${minutos}`;
+      return 'Hora inválida';
     }
 
+    // === DATA ===
     if (tipo === 'data') {
-      valor = valor.trim();
       const formatos = [
         { regex: /^\d{4}-\d{2}-\d{2}$/, ordem: ['ano', 'mes', 'dia'] },
         { regex: /^\d{2}\/\d{2}\/\d{4}$/, ordem: ['dia', 'mes', 'ano'] },
-        { regex: /^\d{2}-\d{2}-\d{4}$/, ordem: ['mes', 'dia', 'ano'] },
+        { regex: /^\d{2}-\d{2}-\d{4}$/, ordem: ['dia', 'mes', 'ano'] },
         { regex: /^\d{4}\/\d{2}\/\d{2}$/, ordem: ['ano', 'mes', 'dia'] },
       ];
 
@@ -422,19 +412,17 @@ function formatarDataHora(valor, tipo) {
 
           if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return 'Data inválida';
 
-          const dateObj = new Date(Date.UTC(ano, mes - 1, dia));
-          if (isNaN(dateObj.getTime())) return 'Data inválida';
+          const dateObj = DateTime.fromObject({ year: ano, month: mes, day: dia });
+          if (!dateObj.isValid) return 'Data inválida';
 
-          return `${dia.toString().padStart(2, '0')}/${mes.toString().padStart(2, '0')}/${ano}`;
+          return dateObj.toFormat('dd/MM/yyyy');
         }
       }
 
-      if (!/^\d{4}-\d{2}-\d{2}([T\s].*)?$/.test(valor)) return 'Data inválida';
+      const dt = DateTime.fromISO(valor, { setZone: true });
+      if (!dt.isValid) return 'Data inválida';
 
-      const date = DateTime.fromISO(valor, { setZone: true });
-      if (!date.isValid) return 'Data inválida';
-
-      return date.toFormat('dd/MM/yyyy');
+      return dt.toFormat('dd/MM/yyyy');
     }
 
     return '';
@@ -630,7 +618,6 @@ app.post('/zapi-webhook', async (req, res) => {
 
         // 🕒 Hora
         const hora = (() => {
-          const { DateTime } = require('luxon');
 
           // 1. Combina hora e data com zona correta
           if (parameters?.hora && parameters?.data) {
@@ -659,7 +646,13 @@ app.post('/zapi-webhook', async (req, res) => {
             return `${h}:${m}`;
           }
 
-          // 3. Fallback
+          // 3. Fallback direto do parâmetro do Dialogflow, com parse defensivo
+          if (parameters?.hora) {
+            const horaParseada = formatarDataHora(parameters.hora, 'hora');
+            if (horaParseada && horaParseada !== 'Hora inválida') return horaParseada;
+          }
+
+          // 4. Último fallback: extração bruta
           const horaFallback = formatarDataHora(fallback.hora, 'hora');
           return horaFallback !== 'Hora inválida' ? horaFallback : null;
         })();
@@ -744,8 +737,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'EscolherHorarioDisponivel') {
       const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-      let horaRaw = parameters?.hora || extractFallbackFields(message).hora;
-      let hora = formatarDataHora(horaRaw, 'hora');
+      const hora = formatarDataHora(parameters?.hora || extractFallbackFields(message).hora || '', 'hora');
+      console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", parameters?.hora);
 
       if (!ctx || !hora || hora === 'Hora inválida') {
         await sendZapiMessage("Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 14:30");
