@@ -280,6 +280,16 @@ async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAg
   }
 }
 
+// Função para buscar os parâmetros em qualquer contexto ativo
+function getParametroDosContextos(contexts, parametro) {
+  for (const ctx of contexts) {
+    if (ctx.parameters && ctx.parameters[parametro] !== undefined) {
+      return ctx.parameters[parametro];
+    }
+  }
+  return undefined;
+}
+
 // Notifica Telegram
 async function notifyTelegram(phone, message) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -898,16 +908,15 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'CapturarProcedimento') {
-      const ctx = getContext(queryResult, 'aguardando_procedimento');
       const procedimento = parameters?.procedimento || fallback.procedimento;
+      
+      const nome = getParametroDosContextos(outputContexts, 'nome');
+      const telefone = getParametroDosContextos(outputContexts, 'telefone');
+      const dataISO = getParametroDosContextos(outputContexts, 'data');
+      const hora = getParametroDosContextos(outputContexts, 'hora');
+      const tipoAgendamento = getParametroDosContextos(outputContexts, 'tipoAgendamento');
+      const convenio = getParametroDosContextos(outputContexts, 'convenio') || '-';
 
-      if (!procedimento) {
-        await sendZapiMessage("Não entendi o procedimento. Pode repetir?");
-        return res.status(200).send("Procedimento inválido");
-      }
-
-      const { nome, telefone, dataISO, hora, tipoAgendamento } = ctx.parameters;
-      const convenio = ctx.parameters?.convenio || '-';
       const dataFormatada = formatarDataHora(dataISO, 'data');
 
       await confirmarAgendamento({
