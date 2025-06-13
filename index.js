@@ -793,57 +793,62 @@ app.post('/zapi-webhook', async (req, res) => {
       }, sessionId);
 
       const lista = horarios.map((h, i) => `${i + 1}. ${h}`).join('\n');
-      await sendZapiMessage(`Escolha um dos horários disponíveis para ${formatarDataHora(dataISO, 'data')}:\n\n${lista}`);
+      await sendZapiMessage(`Consultando horários disponíveis...`);
+      await sendZapiMessage(`Escolha um dos horários disponíveis para ${formatarDataHora(dataISO, 'data')}:\n\n` +
+        `\`\`\`${lista}\`\`\`\n\n` +
+        `Responda com o número do horário ou digite a hora no formato HH:mm (ex: 09:30)`);
       return res.status(200).send("Horários exibidos");
     }
 
     if (intent === 'CapturarHorarioDisponivel') {
       const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-      const horaInput = parameters?.hora || extractFallbackFields(message).hora || '';
-      const hora = formatarDataHora(horaInput, 'hora');
-      console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaInput);
+      const horaOriginal = parameters?.['hora.original'] || extractFallbackFields(message).hora || '';
+      const hora = formatarDataHora(horaOriginal, 'hora');
+
+      console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
 
       if (!ctx || !hora || hora === 'Hora inválida') {
-        await sendZapiMessage("❌ Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 14:30");
+        await sendZapiMessage("Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 09:30");
         return res.status(200).send("Erro de contexto ou hora");
       }
 
       const { DateTime } = require('luxon');
-      const dataCtx = ctx.parameters?.data || ctx.parameters?.dataISO;
+      const dataCtx = ctx.parameters?.data;
 
       const dt = DateTime.fromISO(dataCtx, { zone: 'America/Sao_Paulo' });
       const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
 
       if (!dataISO) {
-        await sendZapiMessage("⚠️ Houve um erro ao recuperar a data. Por favor, envie novamente.");
+        await sendZapiMessage("Houve um erro ao recuperar a data. Por favor, envie novamente.");
         return res.status(200).send("Erro de data");
       }
 
-      const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+      const { nome, telefone, tipoAgendamento, procedimento, convenio } = ctx.parameters;
       const dataFormatada = formatarDataHora(dataISO, 'data');
 
+      const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
       if (!horariosDisponiveis.includes(hora)) {
         await sendZapiMessage(
-          `⚠️ Esse horário está ocupado.\nEscolha um destes horários disponíveis para ${dataFormatada}:\n` +
+          `⚠️ Esse horário também está ocupado.\nEscolha um destes horários disponíveis para ${dataFormatada}:\n` +
           horariosDisponiveis.join('\n')
         );
         return res.status(200).send("Horário inválido");
       }
 
-      // ✅ Horário válido — salvar no contexto para a próxima etapa
-      await sendZapiMessage(
-        `✅ Ótimo! Agora, qual procedimento você gostaria de realizar?`
-      );
-
-      await setDialogflowContext(session, 'aguardando_procedimento', 5, {
-        ...ctx.parameters,
-        hora,
+      await confirmarAgendamento({
+        nome,
+        telefone,
         dataISO,
-        data: dataISO
+        hora,
+        tipoAgendamento,
+        procedimento,
+        convenio,
+        dataFormatada
       });
 
-      return res.status(200).send("Horário salvo, aguardando procedimento");
+      return res.status(200).send("Agendamento confirmado");
     }
+
 
     if (intent === 'CapturarProcedimento') {
       const ctx = getContext(queryResult, 'aguardando_procedimento');
