@@ -162,15 +162,14 @@ async function logToAgendamentosSheet({ nome, telefone, tipoAgendamento, data, h
 }
 
 // 📆 Função para confirmar agendamento
-async function confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada }) {
+async function confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, dataFormatada }) {
   await criarEventoGoogleCalendar({
     nome,
     telefone,
     dataISO,
     hora,
     tipoAgendamento,
-    procedimento,
-    convenio
+    procedimento
   });
   await logToAgendamentosSheet({
     nome,
@@ -178,8 +177,7 @@ async function confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendam
     tipoAgendamento,
     data: dataFormatada,
     hora,
-    procedimento,
-    convenio
+    procedimento
   });
 
   await sendZapiMessage(`Perfeito, ${nome}! Sua ${tipoAgendamento} para *${procedimento}* está agendada para *${dataFormatada}* às *${hora}*. Até lá! 🩵`);
@@ -231,10 +229,10 @@ async function listarHorariosDisponiveis(dateISO) {
 }
 
 // 📆 Função para agendamento no Google Calendar
-async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio }) {
+async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento }) {
   try {
     console.log('📤 Preparando agendamento no Google Calendar...');
-    console.log('📌 Dados recebidos:', { nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio });
+    console.log('📌 Dados recebidos:', { nome, telefone, dataISO, hora, tipoAgendamento, procedimento });
 
     const auth = await getCalendarAuthClient();
     const calendar = google.calendar({ version: 'v3', auth });
@@ -250,7 +248,7 @@ async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAg
     // ✅ Evento a ser enviado
     const evento = {
       summary: `${tipoAgendamento.toUpperCase()} - ${nome}`,
-      description: `Procedimento: ${procedimento}\nConvênio: ${convenio}\nTelefone: ${telefone}`,
+      description: `Procedimento: ${procedimento}\nTelefone: ${telefone}`,
       start: { dateTime: start.toISO(), timeZone: 'America/Buenos_Aires' },
       end: { dateTime: end.toISO(), timeZone: 'America/Buenos_Aires' },
     };
@@ -708,8 +706,7 @@ app.post('/zapi-webhook', async (req, res) => {
             telefone: cleanPhone,
             dataISO,
             tipoAgendamento: tipoAg,
-            procedimento,
-            convenio
+            procedimento
           }, sessionId);
 
           await sendZapiMessage(
@@ -725,8 +722,7 @@ app.post('/zapi-webhook', async (req, res) => {
           dataISO,
           hora,
           tipoAgendamento,
-          procedimento,
-          convenio,
+          procedimento
           dataFormatada
         });
 
@@ -912,16 +908,24 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'CapturarProcedimento') {
+      const ctx = getContext(queryResult, 'aguardando_procedimento');
+      if (!ctx) {
+        console.error("❌ Contexto 'aguardando_procedimento' não encontrado");
+        return res.status(200).send("Erro de contexto");
+      }
       const procedimento = parameters?.procedimento || fallback.procedimento;
+      console.log("📋 Procedimento recebido:", procedimento);
 
       const nome = getParametroDosContextos(outputContexts, 'nome');
       const telefone = getParametroDosContextos(outputContexts, 'telefone');
       const dataISO = getParametroDosContextos(outputContexts, 'data');
       const hora = getParametroDosContextos(outputContexts, 'hora');
       const tipoAgendamento = getParametroDosContextos(outputContexts, 'tipoAgendamento');
-      const convenio = getParametroDosContextos(outputContexts, 'convenio') || '-';
-
       const dataFormatada = formatarDataHora(dataISO, 'data');
+      if (!nome || !telefone || !dataISO || !hora || !tipoAgendamento) {        
+        return res.status(200).send("Dados incompletos");          
+      }
+      console.log("📞 Telefone:", telefone, "| Nome:", nome, "| Data:", dataISO, "| Hora:", hora, "| Tipo:", tipoAgendamento);
 
       await confirmarAgendamento({
         nome,
@@ -948,7 +952,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const hora = `${h}:${m}`;
 
         const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-        const { nome, telefone, dataISO, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+        const { nome, telefone, dataISO, tipoAgendamento, procedimento} = ctx.parameters;
         const dataFormatada = formatarDataHora(dataISO, 'data');
 
         const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
@@ -957,7 +961,7 @@ app.post('/zapi-webhook', async (req, res) => {
           return res.status(200).send("Horário inválido");
         }
 
-        await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
+        await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, dataFormatada });
         return res.status(200).send("Agendamento confirmado (via fallback)");
       }
     }
