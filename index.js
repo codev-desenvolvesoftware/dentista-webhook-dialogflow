@@ -802,396 +802,393 @@ app.post('/zapi-webhook', async (req, res) => {
         `\`\`\`${horariosFormatados}\`\`\`\n\n` +
         `Por favor, digite o horário desejado no formato *HH:mm* (ex: 09:30)`
       );
+    }
 
-      if (intent === 'CapturarHorarioDisponivel') {
+    if (intent === 'CapturarHorarioDisponivel') {
+      const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
+
+      const horaOriginal =
+        parameters?.['hora.original'] ||
+        ctx?.parameters?.['hora.original'] ||
+        extractFallbackFields(message).hora;
+
+      const hora = formatarDataHora(horaOriginal, 'hora');
+
+      console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
+
+      if (!ctx || !hora || hora === 'Hora inválida') {
+        await sendZapiMessage("Desculpe, não entendi o horário. Digite no formato HH:mm, como 14:30.");
+        return res.status(200).send("Erro de contexto ou hora");
+      }
+
+      const { DateTime } = require('luxon');
+      const dataCtx = ctx.parameters?.data;
+
+      const dt = DateTime.fromISO(dataCtx, { zone: 'America/Sao_Paulo' });
+      const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
+
+      if (!dataISO) {
+        await sendZapiMessage("Houve um erro ao recuperar a data. Por favor, envie novamente.");
+        return res.status(200).send("Erro de data");
+      }
+
+      const { nome, telefone, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+      const dataFormatada = formatarDataHora(dataISO, 'data');
+
+      const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
+      if (!horariosDisponiveis.includes(hora)) {
+        await sendZapiMessage(
+          `⚠️ Esse horário também está ocupado.\nEscolha um destes horários disponíveis para ${dataFormatada}:\n` +
+          horariosDisponiveis.join('\n')
+        );
+        return res.status(200).send("Horário inválido");
+      }
+
+      await confirmarAgendamento({
+        nome,
+        telefone,
+        dataISO,
+        hora,
+        tipoAgendamento,
+        procedimento,
+        convenio,
+        dataFormatada
+      });
+
+      return res.status(200).send("Agendamento confirmado");
+    }
+
+    if (intent === 'CapturarProcedimento') {
+      const ctx = getContext(queryResult, 'aguardando_procedimento');
+      const procedimento = parameters?.procedimento || fallback.procedimento;
+
+      if (!procedimento) {
+        await sendZapiMessage("Não entendi o procedimento. Pode repetir?");
+        return res.status(200).send("Procedimento inválido");
+      }
+
+      const { nome, telefone, dataISO, hora, tipoAgendamento } = ctx.parameters;
+      const convenio = ctx.parameters?.convenio || '-';
+      const dataFormatada = formatarDataHora(dataISO, 'data');
+
+      await confirmarAgendamento({
+        nome,
+        telefone,
+        dataISO,
+        hora,
+        tipoAgendamento,
+        procedimento,
+        convenio,
+        dataFormatada
+      });
+
+      return res.status(200).send("Agendamento finalizado");
+    }
+
+    // ⚠️ Nenhuma intent reconhecida (intent === undefined) e contexto de horário disponível ativo
+    if (!intent && getContext(queryResult, 'aguardando_horario_disponivel')) {
+      const mensagem = message?.text?.message || '';
+      const regex = /(\d{1,2})[:h]?(\d{2})?/;
+      const match = mensagem.match(regex);
+
+      if (match) {
+        const h = match[1].padStart(2, '0');
+        const m = match[2] ? match[2].padStart(2, '0') : '00';
+        const hora = `${h}:${m}`;
+
         const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-
-        const horaOriginal =
-          parameters?.['hora.original'] ||
-          ctx?.parameters?.['hora.original'] ||
-          extractFallbackFields(message).hora;
-
-        const hora = formatarDataHora(horaOriginal, 'hora');
-
-        console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
-
-        if (!ctx || !hora || hora === 'Hora inválida') {
-          await sendZapiMessage("Desculpe, não entendi o horário. Digite no formato HH:mm, como 14:30.");
-          return res.status(200).send("Erro de contexto ou hora");
-        }
-
-        const { DateTime } = require('luxon');
-        const dataCtx = ctx.parameters?.data;
-
-        const dt = DateTime.fromISO(dataCtx, { zone: 'America/Sao_Paulo' });
-        const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
-
-        if (!dataISO) {
-          await sendZapiMessage("Houve um erro ao recuperar a data. Por favor, envie novamente.");
-          return res.status(200).send("Erro de data");
-        }
-
-        const { nome, telefone, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+        const { nome, telefone, dataISO, tipoAgendamento, procedimento, convenio } = ctx.parameters;
         const dataFormatada = formatarDataHora(dataISO, 'data');
 
         const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
         if (!horariosDisponiveis.includes(hora)) {
-          await sendZapiMessage(
-            `⚠️ Esse horário também está ocupado.\nEscolha um destes horários disponíveis para ${dataFormatada}:\n` +
-            horariosDisponiveis.join('\n')
-          );
+          await sendZapiMessage(`⚠️ Esse horário também está ocupado.\nEscolha um desses:\n` + horariosDisponiveis.join('\n'));
           return res.status(200).send("Horário inválido");
         }
 
-        await confirmarAgendamento({
-          nome,
-          telefone,
-          dataISO,
-          hora,
-          tipoAgendamento,
-          procedimento,
-          convenio,
-          dataFormatada
+        await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
+        return res.status(200).send("Agendamento confirmado (via fallback)");
+      }
+    }
+
+    if (intent === 'FalarComAtendente') {
+      try {
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'transbordo humano',
+          intent
         });
 
-        return res.status(200).send("Agendamento confirmado");
+        const resposta = 'Já te coloco em contato com alguém da nossa equipe 👨‍⚕️. Um momento...';
+
+        await sendZapiMessage(resposta);
+
+        return res.status(200).send(); // confirma que o webhook respondeu
+      } catch (error) {
+        console.error('Erro ao encaminhar para atendimento humano:', error);
+        return res.status(500).send("Erro ao processar a solicitação");
       }
+    }
 
+    if (intent === 'VerificarListaConvenios') {
+      const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
 
-      if (intent === 'CapturarProcedimento') {
-        const ctx = getContext(queryResult, 'aguardando_procedimento');
-        const procedimento = parameters?.procedimento || fallback.procedimento;
+      if (ctxConfirmacao) {
+        // Normalize a mensagem do usuário
+        const messageNormalized = normalize(message);
 
-        if (!procedimento) {
-          await sendZapiMessage("Não entendi o procedimento. Pode repetir?");
-          return res.status(200).send("Procedimento inválido");
+        // Tentativa de obter o convênio informado via parâmetros
+        let convenioInformado =
+          parameters?.convenio_aceito ||
+          parameters?.convenio;
+
+        // Fallback se parameters estiverem vazios ou for um objeto vazio
+        if (
+          !convenioInformado ||
+          (typeof convenioInformado === 'object' && Object.keys(convenioInformado).length === 0)
+        ) {
+          convenioInformado = detectarConvenioNaFrase(messageNormalized, conveniosAceitos);
         }
 
-        const { nome, telefone, dataISO, hora, tipoAgendamento } = ctx.parameters;
-        const convenio = ctx.parameters?.convenio || '-';
-        const dataFormatada = formatarDataHora(dataISO, 'data');
+        // Normaliza o valor final do convênio informado
+        const convenioTexto =
+          typeof convenioInformado === 'string'
+            ? convenioInformado
+            : typeof convenioInformado?.value === 'string'
+              ? convenioInformado.value
+              : '';
 
-        await confirmarAgendamento({
-          nome,
-          telefone,
-          dataISO,
-          hora,
-          tipoAgendamento,
-          procedimento,
-          convenio,
-          dataFormatada
-        });
+        const textoConvenio = normalize(convenioTexto);
 
-        return res.status(200).send("Agendamento finalizado");
-      }
+        // Detecta se é ou não um convênio aceito
+        const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
 
-      // ⚠️ Nenhuma intent reconhecida (intent === undefined) e contexto de horário disponível ativo
-      if (!intent && getContext(queryResult, 'aguardando_horario_disponivel')) {
-        const mensagem = message?.text?.message || '';
-        const regex = /(\d{1,2})[:h]?(\d{2})?/;
-        const match = mensagem.match(regex);
-
-        if (match) {
-          const h = match[1].padStart(2, '0');
-          const m = match[2] ? match[2].padStart(2, '0') : '00';
-          const hora = `${h}:${m}`;
-
-          const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-          const { nome, telefone, dataISO, tipoAgendamento, procedimento, convenio } = ctx.parameters;
-          const dataFormatada = formatarDataHora(dataISO, 'data');
-
-          const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
-          if (!horariosDisponiveis.includes(hora)) {
-            await sendZapiMessage(`⚠️ Esse horário também está ocupado.\nEscolha um desses:\n` + horariosDisponiveis.join('\n'));
-            return res.status(200).send("Horário inválido");
-          }
-
-          await confirmarAgendamento({ nome, telefone, dataISO, hora, tipoAgendamento, procedimento, convenio, dataFormatada });
-          return res.status(200).send("Agendamento confirmado (via fallback)");
-        }
-      }
-
-      if (intent === 'FalarComAtendente') {
-        try {
-          await notifyTelegram(cleanPhone, message);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'transbordo humano',
-            intent
-          });
-
-          const resposta = 'Já te coloco em contato com alguém da nossa equipe 👨‍⚕️. Um momento...';
-
-          await sendZapiMessage(resposta);
-
-          return res.status(200).send(); // confirma que o webhook respondeu
-        } catch (error) {
-          console.error('Erro ao encaminhar para atendimento humano:', error);
-          return res.status(500).send("Erro ao processar a solicitação");
-        }
-      }
-
-
-      const contextoNome = getContext(queryResult, 'aguardando_nome_urgencia');
-      const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
-      const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
-
-      const nomeCompleto = parameters?.nome || contextoDescricao?.parameters?.nome || contextoNome?.parameters?.nome;
-      const descricaoCompleta = parameters?.descricao || contextoDescricao?.parameters?.descricao;
-
-      if (contextoEncerrado && (!nomeCompleto || !descricaoCompleta)) {
-        console.log("🛑 Urgência já encerrada, ignorando nova mensagem.");
-        return res.status(200).send(); // Não responde nada
-      }
-      // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
-      if (intent === 'Urgencia' || intent === 'UrgenciaCapturaNome' || intent === 'UrgenciaCapturaDescricao' || contextoNome || contextoDescricao) {
-        console.log("📥 Intent: Urgencia");
-
-        const rawMessage = message?.text?.message || '';
-        const fallback = extractFallbackFields(message);
-        const nomeBruto =
-          parameters?.nome?.trim() ||
-          contextoDescricao?.parameters?.nome?.trim() ||  // 🔁 Pega do contexto atual
-          contextoNome?.parameters?.nome?.trim() ||
-          fallback.nome?.trim() || '';
-        const descricaoBruta = parameters?.descricao || contextoDescricao?.parameters?.descricao || rawMessage.trim();
-
-        const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
-        const descricao = (descricaoBruta || '').trim();
-
-        // Fluxo inicial - solicitar nome
-        if (!contextoNome && !contextoDescricao && !nome) {
-          console.log("🔍 Contexto de nome não encontrado, solicitando nome do usuário.");
-          await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
-          await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
-          return res.status(200).send();
-        }
-
-        // Se ainda assim não houver nome, mas já tiver contexto de nome
-        if (contextoNome && !contextoDescricao && !descricao) {
-          if (!nome) {
-            console.log("🔍 Contexto de nome encontrado, mas nome não informado.");
-            await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
-            await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
-            return res.status(200).send();
-          }
-          // Tendo o nome, pergunta pela descrição
-          console.log("🔍 Nome encontrado, solicitando descrição do problema.");
-          await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
-          await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
-          return res.status(200).send();
-        }
-
-        // Após nome e descrição — finalizar
-        console.log("📥 Dados completos para urgência:", { nome, descricao });
-        if (nome && descricao) {
-          await notifyTelegram(cleanPhone, `🆘 Urgência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Descrição: ${descricao}`);
-
-          await logToSheet({
-            phone: cleanPhone,
-            message: descricao,
-            nome,
-            type: 'urgência',
-            intent
-          });
-
-          await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
-          await setContext(res, 'aguardando_nome_urgencia', 0, {}, sessionId);
-          await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
-          await setContext(res, 'urgencia_encerrada', 1, {}, sessionId);
-
-          console.log("✅ Mensagem enviada e contextos atualizados.");
-          return res.status(200).send();
-        }
-
-        // Se algo deu errado e chegou aqui, repete a pergunta anterior
-        console.log("🔍 Dados incompletos, solicitando novamente.");
-        const fallbackText = !nome ? 'Pode me informar seu *nome* por favor?'
-          : 'Me diga *qual é o problema, o que está sentindo*?';
-        await sendZapiMessage(fallbackText);
-        return res.status(200).send();
-      }
-
-      if (intent === 'VerificarListaConvenios') {
-        const ctxConfirmacao = queryResult.outputContexts?.find(ctx => ctx.name.includes('aguardando-confirmacao-lista-convenios'));
-
-        if (ctxConfirmacao) {
-          // Normalize a mensagem do usuário
-          const messageNormalized = normalize(message);
-
-          // Tentativa de obter o convênio informado via parâmetros
-          let convenioInformado =
-            parameters?.convenio_aceito ||
-            parameters?.convenio;
-
-          // Fallback se parameters estiverem vazios ou for um objeto vazio
-          if (
-            !convenioInformado ||
-            (typeof convenioInformado === 'object' && Object.keys(convenioInformado).length === 0)
-          ) {
-            convenioInformado = detectarConvenioNaFrase(messageNormalized, conveniosAceitos);
-          }
-
-          // Normaliza o valor final do convênio informado
-          const convenioTexto =
-            typeof convenioInformado === 'string'
-              ? convenioInformado
-              : typeof convenioInformado?.value === 'string'
-                ? convenioInformado.value
-                : '';
-
-          const textoConvenio = normalize(convenioTexto);
-
-          // Detecta se é ou não um convênio aceito
-          const convenioDetectado = detectarConvenioNaFrase(textoConvenio, conveniosAceitos);
-
-          // ⛔️ Se não encontrou convênio válido, dispara evento ConvenioNaoAtendido
-          if (!convenioDetectado) {
-            console.log('❌ Nenhum convênio detectado. Disparando evento ConvenioNaoAtendido');
-            await logToSheet({
-              phone: cleanPhone,
-              message,
-              type: 'bot',
-              intent: `ConvenioNaoAtendido (evento disparado)`
-            });
-            const naoAtendidoResponse = await axios.post(
-              `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
-              {
-                queryInput: {
-                  event: {
-                    name: 'ConvenioNaoAtendido',
-                    languageCode: 'pt-BR'
-                  }
-                }
-              },
-              { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
-            const followupText = naoAtendidoResponse.data.queryResult.fulfillmentText;
-            console.log("🤖 Resposta do evento (NaoAtendido):", followupText);
-            if (followupText) {
-              await sendZapiMessage(followupText);
-            }
-            return res.status(200).send("Evento ConvenioNaoAtendido disparado");
-          }
-
-          // 🟢 Se chegou aqui, convênio foi identificado — segue fluxo normal:
-          const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
-
-          // Formata o nome do convênio com letras maiúsculas
-          const convenioFormatado = toTitleCase(convenioDetectado || '');
-
+        // ⛔️ Se não encontrou convênio válido, dispara evento ConvenioNaoAtendido
+        if (!convenioDetectado) {
+          console.log('❌ Nenhum convênio detectado. Disparando evento ConvenioNaoAtendido');
           await logToSheet({
             phone: cleanPhone,
             message,
             type: 'bot',
-            intent: `${followup} (event redirect)`
+            intent: `ConvenioNaoAtendido (evento disparado)`
           });
-
-          // LOGS DE DEPURAÇÃO - CONVÊNIO
-          console.log('🔎 Convênio detectado:', convenioDetectado);
-          console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '[nenhum parâmetro]' });
-
-          const eventPayload = {
-            name: followup,
-            languageCode: 'pt-BR',
-            ...(convenioDetectado && { parameters: { convenio: convenioFormatado } }) // só adiciona se existir
-          };
-
-          // Envia evento para Dialogflow com nome capitalizado
-          const followupResponse = await axios.post(
+          const naoAtendidoResponse = await axios.post(
             `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
             {
               queryInput: {
-                event: eventPayload
+                event: {
+                  name: 'ConvenioNaoAtendido',
+                  languageCode: 'pt-BR'
+                }
               }
             },
             { headers: { Authorization: `Bearer ${accessToken}` } }
           );
-
-          const followupText = followupResponse.data.queryResult.fulfillmentText;
-          console.log("🤖 Resposta do evento:", followupText);
-
+          const followupText = naoAtendidoResponse.data.queryResult.fulfillmentText;
+          console.log("🤖 Resposta do evento (NaoAtendido):", followupText);
           if (followupText) {
             await sendZapiMessage(followupText);
           }
-
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: `${followup} (evento disparado)`
-          });
-
-          return res.status(200).send("Followup executado");
+          return res.status(200).send("Evento ConvenioNaoAtendido disparado");
         }
-      }
 
-      // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
-      if (intent && !reply) {
-        const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
-        const falhas = contextoTentativa?.parameters?.falhas || 0;
+        // 🟢 Se chegou aqui, convênio foi identificado — segue fluxo normal:
+        const followup = convenioDetectado ? 'ConvenioAtendido' : 'ConvenioNaoAtendido';
 
-        if (falhas >= 1) {
-          // Segunda falha: transbordo para atendente
-          await sendZapiMessage('Vou acionar um atendente 👩‍💻 Aguarde só um instante ');
-          await notifyTelegram(cleanPhone, message);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'transbordo humano',
-            intent: 'FallbackDepoisDeFalha'
-          });
-          return res.status(200).json({
-            fulfillmentText: 'Encaminhando para atendente...',
-            outputContexts: [] // encerra o contexto
-          });
-        } else {
-          // Primeira falha: responde e seta contexto com falhas = 1
-          const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
-          await sendZapiMessage(respostaPadrao);
-          await logToSheet({
-            phone: cleanPhone,
-            message,
-            type: 'bot',
-            intent: 'RespostaVazia'
-          });
+        // Formata o nome do convênio com letras maiúsculas
+        const convenioFormatado = toTitleCase(convenioDetectado || '');
 
-          return res.status(200).json({
-            fulfillmentText: respostaPadrao,
-            outputContexts: [{
-              name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
-              lifespanCount: 1,
-              parameters: {
-                falhas: 1
-              }
-            }]
-          });
-        }
-      }
-
-      if (reply) {
-        await sendZapiMessage(reply);
         await logToSheet({
           phone: cleanPhone,
-          message: reply,
+          message,
           type: 'bot',
-          intent
+          intent: `${followup} (event redirect)`
         });
-        return res.status(200).send("OK");
-      } else {
-        console.warn("⚠️ Nenhuma resposta definida para a intent.");
+
+        // LOGS DE DEPURAÇÃO - CONVÊNIO
+        console.log('🔎 Convênio detectado:', convenioDetectado);
+        console.log('📤 Enviando evento:', followup, 'com parâmetro:', { convenio: convenioFormatado || '[nenhum parâmetro]' });
+
+        const eventPayload = {
+          name: followup,
+          languageCode: 'pt-BR',
+          ...(convenioDetectado && { parameters: { convenio: convenioFormatado } }) // só adiciona se existir
+        };
+
+        // Envia evento para Dialogflow com nome capitalizado
+        const followupResponse = await axios.post(
+          `https://dialogflow.googleapis.com/v2/projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}:detectIntent`,
+          {
+            queryInput: {
+              event: eventPayload
+            }
+          },
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        const followupText = followupResponse.data.queryResult.fulfillmentText;
+        console.log("🤖 Resposta do evento:", followupText);
+
+        if (followupText) {
+          await sendZapiMessage(followupText);
+        }
+
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: `${followup} (evento disparado)`
+        });
+
+        return res.status(200).send("Followup executado");
+      }
+    }
+
+    // 🚨 Contexto urgência
+    const contextoNome = getContext(queryResult, 'aguardando_nome_urgencia');
+    const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
+    const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
+    const nomeCompleto = parameters?.nome || contextoDescricao?.parameters?.nome || contextoNome?.parameters?.nome;
+    const descricaoCompleta = parameters?.descricao || contextoDescricao?.parameters?.descricao;
+    if (contextoEncerrado && (!nomeCompleto || !descricaoCompleta)) {
+      console.log("🛑 Urgência já encerrada, ignorando nova mensagem.");
+      return res.status(200).send(); // Não responde nada
+    }
+    // Garante que o fluxo só continue se a intent for 'Urgencia' OU se os contextos estiverem ativos
+    if (intent === 'Urgencia' || intent === 'UrgenciaCapturaNome' || intent === 'UrgenciaCapturaDescricao' || contextoNome || contextoDescricao) {
+      console.log("📥 Intent: Urgencia");
+
+      const rawMessage = message?.text?.message || '';
+      const fallback = extractFallbackFields(message);
+      const nomeBruto =
+        parameters?.nome?.trim() ||
+        contextoDescricao?.parameters?.nome?.trim() ||  // 🔁 Pega do contexto atual
+        contextoNome?.parameters?.nome?.trim() ||
+        fallback.nome?.trim() || '';
+      const descricaoBruta = parameters?.descricao || contextoDescricao?.parameters?.descricao || rawMessage.trim();
+
+      const nome = capitalizarNomeCompleto((nomeBruto || '').trim().split(/\s+/).slice(0, 4).join(' '));
+      const descricao = (descricaoBruta || '').trim();
+
+      // Fluxo inicial - solicitar nome
+      if (!contextoNome && !contextoDescricao && !nome) {
+        console.log("🔍 Contexto de nome não encontrado, solicitando nome do usuário.");
+        await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
+        await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
+        return res.status(200).send();
       }
 
-      await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
-      return res.status(200).send("Mensagem humana registrada.");
+      // Se ainda assim não houver nome, mas já tiver contexto de nome
+      if (contextoNome && !contextoDescricao && !descricao) {
+        if (!nome) {
+          console.log("🔍 Contexto de nome encontrado, mas nome não informado.");
+          await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
+          await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
+          return res.status(200).send();
+        }
+        // Tendo o nome, pergunta pela descrição
+        console.log("🔍 Nome encontrado, solicitando descrição do problema.");
+        await sendZapiMessage(`Obrigado, ${nome}! Agora me diga *qual é o problema, o que está sentindo*?`);
+        await setContext(res, 'aguardando_descricao', 2, { nome }, sessionId);
+        return res.status(200).send();
+      }
 
-    } catch (err) {
-      console.error("❌ Erro ao processar mensagem:", err.message);
-      res.status(500).send("Erro ao processar");
+      // Após nome e descrição — finalizar
+      console.log("📥 Dados completos para urgência:", { nome, descricao });
+      if (nome && descricao) {
+        await notifyTelegram(cleanPhone, `🆘 Urgência:\n👤 Nome: ${nome}\n📱 Telefone: ${cleanPhone}\n📄 Descrição: ${descricao}`);
+
+        await logToSheet({
+          phone: cleanPhone,
+          message: descricao,
+          nome,
+          type: 'urgência',
+          intent
+        });
+
+        await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
+        await setContext(res, 'aguardando_nome_urgencia', 0, {}, sessionId);
+        await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
+        await setContext(res, 'urgencia_encerrada', 1, {}, sessionId);
+
+        console.log("✅ Mensagem enviada e contextos atualizados.");
+        return res.status(200).send();
+      }
+
+      // Se algo deu errado e chegou aqui, repete a pergunta anterior
+      console.log("🔍 Dados incompletos, solicitando novamente.");
+      const fallbackText = !nome ? 'Pode me informar seu *nome* por favor?'
+        : 'Me diga *qual é o problema, o que está sentindo*?';
+      await sendZapiMessage(fallbackText);
+      return res.status(200).send();
+    }    
+
+    // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
+    if (intent && !reply) {
+      const contextoTentativa = queryResult?.outputContexts?.find(ctx => ctx.name.includes('tentativa-entendimento'));
+      const falhas = contextoTentativa?.parameters?.falhas || 0;
+
+      if (falhas >= 1) {
+        // Segunda falha: transbordo para atendente
+        await sendZapiMessage('Vou acionar um atendente 👩‍💻 Aguarde só um instante ');
+        await notifyTelegram(cleanPhone, message);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'transbordo humano',
+          intent: 'FallbackDepoisDeFalha'
+        });
+        return res.status(200).json({
+          fulfillmentText: 'Encaminhando para atendente...',
+          outputContexts: [] // encerra o contexto
+        });
+      } else {
+        // Primeira falha: responde e seta contexto com falhas = 1
+        const respostaPadrao = 'Desculpe, não entendi direito... Pode repetir por favor?';
+        await sendZapiMessage(respostaPadrao);
+        await logToSheet({
+          phone: cleanPhone,
+          message,
+          type: 'bot',
+          intent: 'RespostaVazia'
+        });
+
+        return res.status(200).json({
+          fulfillmentText: respostaPadrao,
+          outputContexts: [{
+            name: `projects/${DF_PROJECT_ID}/agent/sessions/${sessionId}/contexts/tentativa-entendimento`,
+            lifespanCount: 1,
+            parameters: {
+              falhas: 1
+            }
+          }]
+        });
+      }
     }
-  });
-// Rota para capturar as mensagens enviadas do cliente para o atendente
+
+    if (reply) {
+      await sendZapiMessage(reply);
+      await logToSheet({
+        phone: cleanPhone,
+        message: reply,
+        type: 'bot',
+        intent
+      });
+      return res.status(200).send("OK");
+    } else {
+      console.warn("⚠️ Nenhuma resposta definida para a intent.");
+    }
+
+    await logToSheet({ phone: cleanPhone, message, type: 'transbordo humano', intent: 'FallbackManual' });
+    return res.status(200).send("Mensagem humana registrada.");
+
+  } catch (err) {
+    console.error("❌ Erro ao processar mensagem:", err.message);
+    res.status(500).send("Erro ao processar");
+  }
+});
 
 // Rota para capturar as mensagens enviadas do atendente para o cliente
 app.post('/zapi-outgoing', async (req, res) => {
