@@ -802,13 +802,18 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'CapturarHorarioDisponivel') {
       const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-      const horaOriginal = parameters?.['hora.original'] || extractFallbackFields(message).hora || '';
+
+      const horaOriginal =
+        parameters?.['hora.original'] ||
+        ctx?.parameters?.['hora.original'] ||
+        extractFallbackFields(message).hora;
+
       const hora = formatarDataHora(horaOriginal, 'hora');
 
       console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
 
       if (!ctx || !hora || hora === 'Hora inválida') {
-        await sendZapiMessage("Desculpe, não entendi o horário. Digite novamente no formato HH:mm. Exemplo: 09:30");
+        await sendZapiMessage("Desculpe, não entendi o horário. Digite no formato HH:mm, como 14:30.");
         return res.status(200).send("Erro de contexto ou hora");
       }
 
