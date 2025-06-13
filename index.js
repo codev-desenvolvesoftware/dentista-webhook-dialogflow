@@ -726,7 +726,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }
     }
 
-    if (intent === 'AgendarAvaliacaoDesejo') {
+    if (intent === 'AgendarAvaliacao') {
       await setContext(res, 'aguardando_nome', 3, {
         tipoAgendamento: 'avaliação',
         telefone: cleanPhone
@@ -736,7 +736,7 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("Aguardando nome");
     }
 
-    if (intent === 'AgendarConsultaDesejo') {
+    if (intent === 'AgendarConsulta') {
       await setContext(res, 'aguardando_nome', 3, {
         tipoAgendamento: 'consulta',
         telefone: cleanPhone
