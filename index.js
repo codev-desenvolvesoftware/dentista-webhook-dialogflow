@@ -763,7 +763,7 @@ app.post('/zapi-webhook', async (req, res) => {
         nome
       }, sessionId);
 
-      await sendZapiMessage(`Legal, ${nome}! Agora me diga a *data* desejada para o agendamento. (Ex: 05/08)`);
+      await sendZapiMessage(`Legal, ${nome}! Agora me diga a *Data* que deseja agendar. \n(exemplo: 05/08)`);
       return res.status(200).send("Aguardando data");
     }
 
@@ -800,17 +800,22 @@ app.post('/zapi-webhook', async (req, res) => {
       await setContext(res, 'aguardando_horario_disponivel', 3, {
         ...ctx.parameters,
         tipoAgendamento: ctx.parameters?.tipoAgendamento || 'agendamento a ser analisado',
-        nome: ctx.parameters?.nome || 'Paciente',        
+        nome: ctx.parameters?.nome || 'Paciente',
         dataISO
       }, sessionId);
 
-      // Envia mensagem com horários disponíveis formatados
-      const horariosFormatados = horarios.join(' | ');
-      await sendZapiMessage(`📅 Consultando horários disponíveis...`);
+      // Envia mensagem com horários disponíveis formatados (3 por linha)
+      const horariosFormatados = horarios.reduce((linhas, horario, index) => {
+        const linhaIndex = Math.floor(index / 3);
+        if (!linhas[linhaIndex]) linhas[linhaIndex] = [];
+        linhas[linhaIndex].push(horario);
+        return linhas;
+      }, []).map(linha => linha.join(' | ')).join('\n');
+
       await sendZapiMessage(
         `🕓 Horários disponíveis para *${formatarDataHora(dataISO, 'data')}*:\n\n` +
-        `\`\`\`${horariosFormatados}\`\`\`\n\n` +
-        `Por favor, digite o horário desejado no formato *HH:mm* (ex: 09:30)`
+        `\`\`\`\n${horariosFormatados}\n\`\`\`\n\n` +
+        `Por favor, digite o horário desejado no formato *HH:mm* (exemplo: 09:30)`
       );
 
       return res.status(200).send("Horários enviados");
