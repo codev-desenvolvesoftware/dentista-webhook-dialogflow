@@ -763,7 +763,7 @@ app.post('/zapi-webhook', async (req, res) => {
         nome
       }, sessionId);
 
-      await sendZapiMessage(`Legal, ${nome}! Agora me diga a *Data* que deseja agendar. \n(exemplo: 05/08)`);
+      await sendZapiMessage(`Legal, ${nome}! Agora me diga a *data* que deseja agendar. \n(exemplo: 05/08)`);
       return res.status(200).send("Aguardando data");
     }
 
@@ -813,8 +813,8 @@ app.post('/zapi-webhook', async (req, res) => {
       }, []).map(linha => linha.join(' | ')).join('\n');
 
       await sendZapiMessage(
-        `🕓 Horários disponíveis para *${formatarDataHora(dataISO, 'data')}*:\n\n` +
-        `\`\`\`\n${horariosFormatados}\n\`\`\`\n\n` +
+        `🕓 Horários disponíveis para *${formatarDataHora(dataISO, 'data')}*:\n` +
+        `\`\`\`\n${horariosFormatados}\n\`\`\`\n` +
         `Por favor, digite o horário desejado no formato *HH:mm* (exemplo: 09:30)`
       );
 
@@ -864,19 +864,21 @@ app.post('/zapi-webhook', async (req, res) => {
         return res.status(200).send("Horário inválido");
       }
 
-      // ✅ Chama a função de confirmação com dados completos
-      await confirmarAgendamento({
+      await setContext(res, 'aguardando_procedimento', 3, {
         nome,
         telefone,
         dataISO,
         hora,
         tipoAgendamento,
-        procedimento,
-        convenio,
-        dataFormatada
-      });
+        convenio
+      }, sessionId);
 
-      return res.status(200).send("Agendamento confirmado");
+      // Oriente o usuário:
+      await sendZapiMessage(
+        `📌 Horário reservado!\nAgora, para finalizarmos, informe o *procedimento* desejado (exemplo: clareamento, limpeza, aparelho...).`
+      );
+
+      return res.status(200).send("Aguardando procedimento");
     }
 
     if (intent === 'CapturarProcedimento') {
