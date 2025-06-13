@@ -585,12 +585,12 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("🤖 Resposta do bot:", reply);
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
-    const response = await sessionClient.detectIntent(request);
-    const outputContexts = response.queryResult.outputContexts || [];
+    const outputContexts = queryResult?.outputContexts || [];
 
     console.log("🔍 Contextos ativos:", queryResult.outputContexts);
     console.log("🧠 Intent recebida:", intent);
     console.log("📦 Parâmetros recebidos:", parameters);
+    console.log("🔍 Contextos ativos:", outputContexts);
 
     const sendZapiMessage = async (text) => {
       return axios.post(`https://api.z-api.io/instances/${ZAPI_INSTANCE_ID}/token/${ZAPI_INSTANCE_TOKEN}/send-text`, {
@@ -911,7 +911,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
     if (intent === 'CapturarProcedimento') {
       const procedimento = parameters?.procedimento || fallback.procedimento;
-      
+
       const nome = getParametroDosContextos(outputContexts, 'nome');
       const telefone = getParametroDosContextos(outputContexts, 'telefone');
       const dataISO = getParametroDosContextos(outputContexts, 'data');
