@@ -585,6 +585,7 @@ app.post('/zapi-webhook', async (req, res) => {
     console.log("🤖 Resposta do bot:", reply);
     const intent = queryResult?.intent?.displayName;
     const parameters = queryResult?.parameters || {};
+    const response = await sessionClient.detectIntent(request);
     const outputContexts = response.queryResult.outputContexts || [];
 
     console.log("🔍 Contextos ativos:", queryResult.outputContexts);
