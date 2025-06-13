@@ -766,9 +766,12 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'CapturarData') {
-      const ctx = getContext(queryResult, 'aguardando_data');
       const { DateTime } = require('luxon');
 
+      // Recupera parâmetros do contexto 'aguardando_data'
+      const ctx = getContext(queryResult, 'aguardando_data');
+
+      // Tenta obter a data ISO (yyyy-MM-dd) a partir dos parâmetros
       const dataISO = (() => {
         const dateParam = parameters?.data || fallback.data;
         if (!dateParam) return null;
@@ -776,32 +779,37 @@ app.post('/zapi-webhook', async (req, res) => {
         return dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
       })();
 
+      // Se não conseguir interpretar a data
       if (!dataISO) {
-        await sendZapiMessage("Não entendi a data. Pode informar no formato DD/MM?");
+        await sendZapiMessage("❌ Não entendi a data. Pode informar no formato *DD/MM*?");
         return res.status(200).send("Data inválida");
       }
 
+      // Consulta os horários disponíveis para a data informada
       const horarios = await listarHorariosDisponiveis(dataISO);
+
+      // Se não houver horários disponíveis
       if (!horarios.length) {
-        await sendZapiMessage("Ops! Não há horários disponíveis nessa data. Informe outra?");
+        await sendZapiMessage("😕 Ops! Não há horários disponíveis nessa data. Pode informar outra?");
         return res.status(200).send("Sem horários disponíveis");
       }
 
+      // Atualiza contexto aguardando_horario_disponivel com a nova data
       await setContext(res, 'aguardando_horario_disponivel', 3, {
         ...ctx.parameters,
         dataISO
       }, sessionId);
 
-      const lista = horarios.map((h, i) => `${i + 1}. ${h}`).join('\n');
-      await sendZapiMessage(`Consultando horários disponíveis...`);
-
-      // Junta os horários disponíveis em uma linha com separador |
-      const horariosFormatados = lista.join(' | ');
+      // Envia mensagem com horários disponíveis formatados
+      const horariosFormatados = horarios.join(' | ');
+      await sendZapiMessage(`📅 Consultando horários disponíveis...`);
       await sendZapiMessage(
-        `🕓 Horários disponíveis para ${formatarDataHora(dataISO, 'data')}:\n\n` +
+        `🕓 Horários disponíveis para *${formatarDataHora(dataISO, 'data')}*:\n\n` +
         `\`\`\`${horariosFormatados}\`\`\`\n\n` +
         `Por favor, digite o horário desejado no formato *HH:mm* (ex: 09:30)`
       );
+
+      return res.status(200).send("Horários enviados");
     }
 
     if (intent === 'CapturarHorarioDisponivel') {
@@ -1123,7 +1131,7 @@ app.post('/zapi-webhook', async (req, res) => {
         : 'Me diga *qual é o problema, o que está sentindo*?';
       await sendZapiMessage(fallbackText);
       return res.status(200).send();
-    }    
+    }
 
     // Contador de tentativas de entendimento usando contexto de sessão com contagem de falhas
     if (intent && !reply) {
