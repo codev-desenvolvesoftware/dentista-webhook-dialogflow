@@ -920,7 +920,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
 
-    const contextoNome = getContext(queryResult, 'aguardando_nome');
+    const contextoNome = getContext(queryResult, 'aguardando_nome_urgencia');
     const contextoDescricao = getContext(queryResult, 'aguardando_descricao');
     const contextoEncerrado = getContext(queryResult, 'urgencia_encerrada');
 
@@ -951,7 +951,7 @@ app.post('/zapi-webhook', async (req, res) => {
       if (!contextoNome && !contextoDescricao && !nome) {
         console.log("🔍 Contexto de nome não encontrado, solicitando nome do usuário.");
         await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
-        await setContext(res, 'aguardando_nome', 2, {}, sessionId);
+        await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
         return res.status(200).send();
       }
 
@@ -960,7 +960,7 @@ app.post('/zapi-webhook', async (req, res) => {
         if (!nome) {
           console.log("🔍 Contexto de nome encontrado, mas nome não informado.");
           await sendZapiMessage('Para agilizar o atendimento de urgência, informe *seu nome* por favor:');
-          await setContext(res, 'aguardando_nome', 2, {}, sessionId);
+          await setContext(res, 'aguardando_nome_urgencia', 2, {}, sessionId);
           return res.status(200).send();
         }
         // Tendo o nome, pergunta pela descrição
@@ -984,7 +984,7 @@ app.post('/zapi-webhook', async (req, res) => {
         });
 
         await sendZapiMessage(`Recebido, ${nome}! Vamos priorizar seu atendimento 🦷💙`);
-        await setContext(res, 'aguardando_nome', 0, {}, sessionId);
+        await setContext(res, 'aguardando_nome_urgencia', 0, {}, sessionId);
         await setContext(res, 'aguardando_descricao', 0, {}, sessionId);
         await setContext(res, 'urgencia_encerrada', 1, {}, sessionId);
 
