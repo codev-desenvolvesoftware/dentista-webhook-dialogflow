@@ -722,7 +722,7 @@ app.post('/zapi-webhook', async (req, res) => {
           dataISO,
           hora,
           tipoAgendamento,
-          procedimento
+          procedimento,
           dataFormatada
         });
 
