@@ -674,6 +674,8 @@ app.post('/zapi-webhook', async (req, res) => {
         const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
 
         if (!horariosDisponiveis.includes(hora)) {
+          const ctxNome = getContext(queryResult, 'aguardando_nome');
+          const tipoAgendamento = tipoAgendamento || ctxNome?.parameters?.tipoAgendamento || 'consulta'; // fallback
           await setContext(res, 'aguardando_horario_disponivel', 2, {
             nome,
             telefone: cleanPhone,
@@ -797,6 +799,8 @@ app.post('/zapi-webhook', async (req, res) => {
       // Atualiza contexto aguardando_horario_disponivel com a nova data
       await setContext(res, 'aguardando_horario_disponivel', 3, {
         ...ctx.parameters,
+        tipoAgendamento: ctx.parameters?.tipoAgendamento || 'agendamento a ser analisado',
+        nome: ctx.parameters?.nome || 'Paciente',        
         dataISO
       }, sessionId);
 
@@ -821,7 +825,6 @@ app.post('/zapi-webhook', async (req, res) => {
         extractFallbackFields(message).hora;
 
       const hora = formatarDataHora(horaOriginal, 'hora');
-
       console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
 
       if (!ctx || !hora || hora === 'Hora inválida') {
@@ -829,9 +832,7 @@ app.post('/zapi-webhook', async (req, res) => {
         return res.status(200).send("Erro de contexto ou hora");
       }
 
-      const { DateTime } = require('luxon');
       const dataCtx = ctx.parameters?.data;
-
       const dt = DateTime.fromISO(dataCtx, { zone: 'America/Sao_Paulo' });
       const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
 
@@ -840,7 +841,13 @@ app.post('/zapi-webhook', async (req, res) => {
         return res.status(200).send("Erro de data");
       }
 
-      const { nome, telefone, tipoAgendamento, procedimento, convenio } = ctx.parameters;
+      // ✅ Recupera parâmetros com fallback e valores padrão
+      const nome = ctx.parameters?.nome || 'Paciente';
+      const telefone = ctx.parameters?.telefone || 'Não informado';
+      const tipoAgendamento = ctx.parameters?.tipoAgendamento || 'Agendamento';
+      const procedimento = ctx.parameters?.procedimento || 'Não informado';
+      const convenio = ctx.parameters?.convenio || 'Não informado';
+
       const dataFormatada = formatarDataHora(dataISO, 'data');
 
       const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
@@ -852,6 +859,7 @@ app.post('/zapi-webhook', async (req, res) => {
         return res.status(200).send("Horário inválido");
       }
 
+      // ✅ Chama a função de confirmação com dados completos
       await confirmarAgendamento({
         nome,
         telefone,
