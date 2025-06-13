@@ -119,7 +119,7 @@ async function ensureSheetTabsExist() {
 async function logToSheet({ phone, message, type, intent }) {
   try {
     const sheets = google.sheets({ version: 'v4', auth: await getSheetsAuthClient() });
-    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Buenos_Aires' });
     const sheetName = 'Atendimentos';
 
     await ensureSheetTabsExist(sheetName);
@@ -209,8 +209,8 @@ async function listarHorariosDisponiveis(dateISO) {
   else if (diaSemana === 0) return []; // domingo
   else horariosPossiveis = horariosBase.weekday;
 
-  const startOfDay = DateTime.fromISO(dateISO, { zone: 'America/Sao_Paulo' }).startOf('day').toISO();
-  const endOfDay = DateTime.fromISO(dateISO, { zone: 'America/Sao_Paulo' }).endOf('day').toISO();
+  const startOfDay = DateTime.fromISO(dateISO, { zone: 'America/Buenos_Aires' }).startOf('day').toISO();
+  const endOfDay = DateTime.fromISO(dateISO, { zone: 'America/Buenos_Aires' }).endOf('day').toISO();
 
   const events = await calendar.events.list({
     calendarId: process.env.GOOGLE_CALENDAR_ID,
@@ -240,15 +240,19 @@ async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAg
     const calendar = google.calendar({ version: 'v3', auth });
 
     // ✅ Usa Luxon para combinar data + hora com timezone
-    const start = DateTime.fromISO(`${dataISO}T${hora}`, { zone: 'America/Sao_Paulo' });
+    const start = DateTime.fromISO(`${dataISO}T${hora}`, { zone: 'America/Buenos_Aires' });
     const end = start.plus({ minutes: 30 }); // duração 30 min
+
+    if (!nome || !telefone || !dataISO || !hora) {
+      throw new Error('Dados incompletos para criar o evento no Google Calendar.');
+    }
 
     // ✅ Evento a ser enviado
     const evento = {
       summary: `${tipoAgendamento.toUpperCase()} - ${nome}`,
       description: `Procedimento: ${procedimento}\nConvênio: ${convenio}\nTelefone: ${telefone}`,
-      start: { dateTime: start.toISO(), timeZone: 'America/Sao_Paulo' },
-      end: { dateTime: end.toISO(), timeZone: 'America/Sao_Paulo' },
+      start: { dateTime: start.toISO(), timeZone: 'America/Buenos_Aires' },
+      end: { dateTime: end.toISO(), timeZone: 'America/Buenos_Aires' },
     };
 
     // ✅ Logs para debug
@@ -361,7 +365,7 @@ function formatarDataHora(valor, tipo) {
       const isoMatch = valor.match(/(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})/);
       if (isoMatch) {
         const [, date, hour, minute] = isoMatch;
-        const dt = DateTime.fromISO(`${date}T${hour}:${minute}`, { zone: 'America/Sao_Paulo' });
+        const dt = DateTime.fromISO(`${date}T${hour}:${minute}`, { zone: 'America/Buenos_Aires' });
         if (dt.isValid) {
           return dt.toFormat('HH:mm');
         }
@@ -421,7 +425,7 @@ function formatarDataHora(valor, tipo) {
       }
 
       // === Verifica se é um ISO Date ===
-      const dt = DateTime.fromISO(valor, { zone: 'America/Sao_Paulo' });
+      const dt = DateTime.fromISO(valor, { zone: 'America/Buenos_Aires' });
       if (dt.isValid) {
         return dt.toFormat('dd/MM/yyyy');
       }
@@ -609,7 +613,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const dataISO = (() => {
           const dateParam = parameters?.data || fallback.data;
           if (!dateParam) return null;
-          const dt = DateTime.fromISO(dateParam, { zone: 'America/Sao_Paulo' });
+          const dt = DateTime.fromISO(dateParam, { zone: 'America/Buenos_Aires' });
           return dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
         })();
 
@@ -628,8 +632,8 @@ app.post('/zapi-webhook', async (req, res) => {
 
             // ✅ Combina hora + data (solução correta para evitar erro de fuso)
             if (horaParam && dataParam) {
-              const dataLuxon = DateTime.fromISO(dataParam, { zone: 'America/Sao_Paulo' });
-              const horaLuxon = DateTime.fromISO(horaParam, { zone: 'America/Sao_Paulo' });
+              const dataLuxon = DateTime.fromISO(dataParam, { zone: 'America/Buenos_Aires' });
+              const horaLuxon = DateTime.fromISO(horaParam, { zone: 'America/Buenos_Aires' });
 
               if (dataLuxon.isValid && horaLuxon.isValid) {
                 const combinada = dataLuxon.set({
@@ -789,7 +793,7 @@ app.post('/zapi-webhook', async (req, res) => {
       const dataISO = (() => {
         const dateParam = parameters?.data || fallback.data;
         if (!dateParam) return null;
-        const dt = DateTime.fromISO(dateParam, { zone: 'America/Sao_Paulo' });
+        const dt = DateTime.fromISO(dateParam, { zone: 'America/Buenos_Aires' });
         return dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
       })();
 
@@ -850,7 +854,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }
 
       const dataCtx = ctx.parameters?.data;
-      const dt = DateTime.fromISO(dataCtx, { zone: 'America/Sao_Paulo' });
+      const dt = DateTime.fromISO(dataCtx, { zone: 'America/Buenos_Aires' });
       const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
 
       if (!dataISO) {
