@@ -774,7 +774,7 @@ app.post('/zapi-webhook', async (req, res) => {
     }
 
     if (intent === 'CapturarNome') {
-      const nome = capitalizarNomeCompleto(parameters?.nome || fallback.nome || '');
+      const nome = capitalizarNomeCompleto(parameters?.nome || contextParameters?.nome || fallback.nome || '');
 
       if (!nome) {
         await sendZapiMessage("❌ Não entendi seu nome. Pode informar novamente, por favor?");
@@ -907,15 +907,6 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("Aguardando procedimento");
     }
 
-    console.log({
-      nome,
-      telefone,
-      dataISO,
-      hora,
-      tipoAgendamento,
-      procedimento
-    });
-
     if (intent === 'CapturarProcedimento') {
       const ctx = getContext(queryResult, 'aguardando_procedimento');
       if (!ctx) {
@@ -934,7 +925,7 @@ app.post('/zapi-webhook', async (req, res) => {
       if (!nome || !telefone || !dataISO || !hora || !tipoAgendamento) {
         return res.status(200).send("Dados incompletos");
       }
-      console.log("📞 Telefone:", telefone, "| Nome:", nome, "| Data:", dataISO, "| Hora:", hora, "| Tipo:", tipoAgendamento);
+      console.log("📞 Telefone:", telefone, "| Nome:", nome, "| Data:", dataISO, "| Hora:", hora, "| Tipo:", tipoAgendamento, "Procedimento:", procedimento);
 
       await confirmarAgendamento({
         nome,
