@@ -907,6 +907,15 @@ app.post('/zapi-webhook', async (req, res) => {
       return res.status(200).send("Aguardando procedimento");
     }
 
+    console.log({
+      nome,
+      telefone,
+      dataISO,
+      hora,
+      tipoAgendamento,
+      procedimento
+    });
+
     if (intent === 'CapturarProcedimento') {
       const ctx = getContext(queryResult, 'aguardando_procedimento');
       if (!ctx) {
@@ -922,14 +931,14 @@ app.post('/zapi-webhook', async (req, res) => {
       const hora = getParametroDosContextos(outputContexts, 'hora');
       const tipoAgendamento = getParametroDosContextos(outputContexts, 'tipoAgendamento');
       const dataFormatada = formatarDataHora(dataISO, 'data');
-      if (!nome || !telefone || !dataISO || !hora || !tipoAgendamento) {        
-        return res.status(200).send("Dados incompletos");          
+      if (!nome || !telefone || !dataISO || !hora || !tipoAgendamento) {
+        return res.status(200).send("Dados incompletos");
       }
       console.log("📞 Telefone:", telefone, "| Nome:", nome, "| Data:", dataISO, "| Hora:", hora, "| Tipo:", tipoAgendamento);
 
       await confirmarAgendamento({
         nome,
-        telefone: cleanPhone,
+        telefone,
         dataISO,
         hora,
         tipoAgendamento,
@@ -952,7 +961,7 @@ app.post('/zapi-webhook', async (req, res) => {
         const hora = `${h}:${m}`;
 
         const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
-        const { nome, telefone, dataISO, tipoAgendamento, procedimento} = ctx.parameters;
+        const { nome, telefone, dataISO, tipoAgendamento, procedimento } = ctx.parameters;
         const dataFormatada = formatarDataHora(dataISO, 'data');
 
         const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
