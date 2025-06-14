@@ -446,6 +446,29 @@ function formatarDataHora(valor, tipo) {
   }
 }
 
+// Função para extrair hora de forma segura
+function extrairHoraSeguro(parameters, message) {
+  const rawMessage = message?.text?.message || '';
+
+  const horaOriginal = parameters?.['hora.original'];
+  if (horaOriginal) {
+    const h = formatarDataHora(horaOriginal, 'hora');
+    if (h && h !== 'Hora inválida') return h;
+  }
+  // Regex no texto da mensagem (fallback super seguro)
+  const regex = /(\d{1,2})[:h]?(\d{2})?/;
+  const match = rawMessage.match(regex);
+
+  if (match) {
+    const h = match[1].padStart(2, '0');
+    const m = match[2] ? match[2].padStart(2, '0') : '00';
+    if (parseInt(h) < 24 && parseInt(m) < 60) {
+      return `${h}:${m}`;
+    }
+  }
+  return null;
+}
+
 // Função para capitalizar a primeira letra de cada palavra
 function capitalizarNomeCompleto(nome) {
   if (!nome || typeof nome !== 'string') return '';
@@ -634,7 +657,7 @@ app.post('/zapi-webhook', async (req, res) => {
           extractFallbackFields(message).hora ||
           '';
 
-        const hora = formatarDataHora(horaRaw, 'hora');
+        const hora = extrairHoraSeguro(parameters, message);
 
         console.log("🕓 Hora interpretada:", hora, "| Valor original:", horaRaw);
 
@@ -828,7 +851,7 @@ app.post('/zapi-webhook', async (req, res) => {
       // 🔥 Extração correta da hora SEM ERRO DE FUSO
       const horaOriginal = parameters?.['hora.original'] || extractFallbackFields(message).hora;
 
-      const hora = formatarDataHora(horaOriginal, 'hora');
+      const hora = extrairHoraSeguro(parameters, message);
 
       console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
 
