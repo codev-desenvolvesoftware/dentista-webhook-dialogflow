@@ -829,7 +829,8 @@ app.post('/zapi-webhook', async (req, res) => {
         telefone: cleanPhone,
         tipoAgendamento: ctx.parameters?.tipoAgendamento || 'agendamento a ser analisado',
         nome: ctx.parameters?.nome || 'Paciente',
-        dataISO
+        dataISO: dataISO,
+        dataFormatada: dataISO ? formatarDataHora(dataISO, 'data') : null
       }, sessionId);
 
       // Envia mensagem com horários disponíveis formatados (3 por linha)
@@ -852,32 +853,34 @@ app.post('/zapi-webhook', async (req, res) => {
     if (intent === 'CapturarHorarioDisponivel') {
       const ctx = getContext(queryResult, 'aguardando_horario_disponivel');
 
-      const dataISO = ctx?.parameters?.dataISO;
-      const nome = ctx?.parameters?.nome || 'Paciente';
-      const tipoAgendamento = ctx?.parameters?.tipoAgendamento || 'Agendamento';
+      const dataCtx = ctx?.parameters?.data || ctx?.parameters?.dataISO;
+      const dt = DateTime.fromISO(dataCtx, { zone: 'America/Buenos_Aires' });
+      const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
 
       if (!ctx || !dataISO) {
         await sendZapiMessage("❌ Houve um erro ao recuperar a data. Por favor, envie novamente.");
         return res.status(200).send("Erro de contexto ou data");
       }
 
-      // 🕓 Captura do horário corretamente
+      const nome = ctx?.parameters?.nome || 'Paciente';
+      const tipoAgendamento = ctx?.parameters?.tipoAgendamento || 'Agendamento';
+
       const horaRaw = parameters?.['hora'] || parameters?.['hora.original'] || extractFallbackFields(message).hora;
       const hora = formatarDataHora(horaRaw, 'hora');
 
       console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaRaw);
 
       if (!hora || hora === 'Hora inválida') {
-        await sendZapiMessage("❌ Desculpe, não entendi o horário. Envie no formato *HH:mm*, como 09:30");
+        await sendZapiMessage("❌ Não entendi o horário. Envie no formato *HH:mm*, como 09:30");
         return res.status(200).send("Erro no horário");
       }
 
-      const dataFormatada = formatarDataHora(dataISO, 'data');
+      const dataFormatada = ctx?.parameters?.dataFormatada;
       const horariosDisponiveis = await listarHorariosDisponiveis(dataISO);
 
       if (!horariosDisponiveis.includes(hora)) {
         await sendZapiMessage(
-          `⚠️ Esse horário também está ocupado.\nEscolha um desses:\n` +
+          `⚠️ Esse horário também está ocupado.\nEscolha um destes disponíveis:\n` +
           horariosDisponiveis.join(' | ')
         );
         return res.status(200).send("Horário não disponível");
@@ -893,7 +896,7 @@ app.post('/zapi-webhook', async (req, res) => {
       }, sessionId);
 
       await sendZapiMessage(
-        `Perfeito! Agora me informe o *procedimento* que deseja realizar. 🦷`
+        `Perfeito! Agora me diga qual é o *procedimento* que deseja realizar (ex: limpeza, clareamento, aparelho...). 🦷`
       );
 
       return res.status(200).send("Aguardando procedimento");
