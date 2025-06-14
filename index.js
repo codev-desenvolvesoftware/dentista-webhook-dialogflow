@@ -861,11 +861,11 @@ app.post('/zapi-webhook', async (req, res) => {
       console.log("🕓 Hora recebida:", hora, "| Parâmetro original:", horaOriginal);
 
       if (!ctx || !hora || hora === 'Hora inválida') {
-        await sendZapiMessage("❌ Desculpe, não entendi o horário. Envie no formato *HH:mm*, como 09:30");
+        await sendZapiMessage("❌ Desculpe, não entendi o horário. Envie no formato *09:30* ou *14h*.");
         return res.status(200).send("Erro de contexto ou hora");
       }
 
-      const dataCtx = ctx.parameters?.data;
+      const dataCtx = ctx.parameters?.dataISO;
       const dt = DateTime.fromISO(dataCtx, { zone: 'America/Buenos_Aires' });
       const dataISO = dt.isValid ? dt.toFormat('yyyy-MM-dd') : null;
 
@@ -874,7 +874,6 @@ app.post('/zapi-webhook', async (req, res) => {
         return res.status(200).send("Erro de data");
       }
 
-      // ✅ Recupera parâmetros com fallback e valores padrão
       const nome = ctx.parameters?.nome || 'Paciente';
       const telefone = ctx.parameters?.telefone || 'Não informado';
       const tipoAgendamento = ctx.parameters?.tipoAgendamento || 'Agendamento';
@@ -899,9 +898,8 @@ app.post('/zapi-webhook', async (req, res) => {
         tipoAgendamento
       }, sessionId);
 
-      // Oriente o usuário:
       await sendZapiMessage(
-        `Agora para finalizarmos, informe o *procedimento* desejado (exemplo: clareamento, limpeza, aparelho...).`
+        `Perfeito! Agora para finalizarmos, informe o *procedimento* desejado (exemplo: clareamento, limpeza, aparelho...).`
       );
 
       return res.status(200).send("Aguardando procedimento");
@@ -918,7 +916,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       const nome = getParametroDosContextos(outputContexts, 'nome');
       const telefone = String(req.body.phone).replace(/\D/g, '');
-      const dataISO = getParametroDosContextos(outputContexts, 'data');
+      const dataISO = getParametroDosContextos(outputContexts, 'dataISO');
       const hora = getParametroDosContextos(outputContexts, 'hora');
       const tipoAgendamento = getParametroDosContextos(outputContexts, 'tipoAgendamento');
       const dataFormatada = formatarDataHora(dataISO, 'data');
