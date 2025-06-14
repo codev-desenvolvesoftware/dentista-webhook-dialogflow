@@ -450,19 +450,21 @@ function formatarDataHora(valor, tipo) {
 function extrairHoraSeguro(parameters, message) {
   const rawMessage = message?.text?.message || '';
 
+  // 🥇 prioridade total para o valor digitado pelo usuário
   const horaOriginal = parameters?.['hora.original'];
-  if (horaOriginal) {
+  if (horaOriginal && typeof horaOriginal === 'string') {
     const h = formatarDataHora(horaOriginal, 'hora');
     if (h && h !== 'Hora inválida') return h;
   }
 
-  // NOVO: tenta formatar parameters.hora diretamente (caso venha como ISO)
-  if (parameters?.hora) {
-    const h2 = formatarDataHora(parameters.hora, 'hora');
+  // 🥈 fallback para ISO: '2025-06-14T22:30:00-03:00'
+  const horaConvertida = parameters?.hora;
+  if (horaConvertida && typeof horaConvertida === 'string') {
+    const h2 = formatarDataHora(horaConvertida, 'hora');
     if (h2 && h2 !== 'Hora inválida') return h2;
   }
 
-  // Regex no texto da mensagem (fallback seguro)
+  // 🥉 fallback final: regex na mensagem do usuário
   const regex = /(\d{1,2})[:h]?(\d{2})?/;
   const match = rawMessage.match(regex);
   if (match) {
@@ -687,7 +689,7 @@ app.post('/zapi-webhook', async (req, res) => {
           const ctxNome = getContext(queryResult, 'aguardando_nome');
           const tipoAg = tipoAgendamento || ctxNome?.parameters?.tipoAgendamento || 'consulta';
 
-          await setContext(res, 'aguardando_horario_disponivel', 2, {
+          await setContext(res, 'aguardando_horario_disponivel', 3, {
             nome,
             telefone: cleanPhone,
             dataISO,
