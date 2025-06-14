@@ -242,6 +242,7 @@ async function criarEventoGoogleCalendar({ nome, telefone, dataISO, hora, tipoAg
     const end = start.plus({ minutes: 30 }); // duração 30 min
 
     if (!nome || !telefone || !dataISO || !hora) {
+      console.error('❌ Dados incompletos para criar o evento no Google Calendar:', { nome, telefone, dataISO, hora });
       throw new Error('Dados incompletos para criar o evento no Google Calendar.');
     }
 
@@ -892,7 +893,6 @@ app.post('/zapi-webhook', async (req, res) => {
       await setContext(res, 'aguardando_procedimento', 3, {
         telefone: cleanPhone,
         nome,
-        telefone,
         dataFormatada,
         dataISO,
         hora,
@@ -917,7 +917,7 @@ app.post('/zapi-webhook', async (req, res) => {
       console.log("📋 Procedimento recebido:", procedimento);
 
       const nome = getParametroDosContextos(outputContexts, 'nome');
-      const telefone = getParametroDosContextos(outputContexts, 'telefone');
+      const telefone = String(req.body.phone).replace(/\D/g, '');
       const dataISO = getParametroDosContextos(outputContexts, 'data');
       const hora = getParametroDosContextos(outputContexts, 'hora');
       const tipoAgendamento = getParametroDosContextos(outputContexts, 'tipoAgendamento');
@@ -929,7 +929,7 @@ app.post('/zapi-webhook', async (req, res) => {
 
       await confirmarAgendamento({
         nome,
-        telefone,
+        telefone: cleanPhone,
         dataISO,
         hora,
         tipoAgendamento,
