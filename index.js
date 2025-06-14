@@ -455,10 +455,16 @@ function extrairHoraSeguro(parameters, message) {
     const h = formatarDataHora(horaOriginal, 'hora');
     if (h && h !== 'Hora inválida') return h;
   }
-  // Regex no texto da mensagem (fallback super seguro)
+
+  // NOVO: tenta formatar parameters.hora diretamente (caso venha como ISO)
+  if (parameters?.hora) {
+    const h2 = formatarDataHora(parameters.hora, 'hora');
+    if (h2 && h2 !== 'Hora inválida') return h2;
+  }
+
+  // Regex no texto da mensagem (fallback seguro)
   const regex = /(\d{1,2})[:h]?(\d{2})?/;
   const match = rawMessage.match(regex);
-
   if (match) {
     const h = match[1].padStart(2, '0');
     const m = match[2] ? match[2].padStart(2, '0') : '00';
@@ -466,6 +472,7 @@ function extrairHoraSeguro(parameters, message) {
       return `${h}:${m}`;
     }
   }
+
   return null;
 }
 
@@ -710,7 +717,7 @@ app.post('/zapi-webhook', async (req, res) => {
         await sendZapiMessage("Tivemos um problema ao concluir o agendamento. Tente novamente.");
       }
     };
-    
+
     // Identifica quando o usuário respondeu "sim" e está no contexto certo (consulta ou avaliação)
     if (normalize(message) === 'sim') {
       const contextNames = queryResult.outputContexts?.map(c => c.name) || [];
